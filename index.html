@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Les Quatre Vents — Jeu de Plateau & Cartes Tactiques</title>
+  <meta name="description" content="Jeu de plateau et de cartes tactique sur grille 3x3 avec 4 factions, 100 cartes illustrées et règles avancées.">
+  <meta name="theme-color" content="#090d1a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Quatre Vents">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="ambient-bg" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="compass-watermark"></div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand" id="brand-home" role="button" tabindex="0" title="Retour au salon principal">
+      <span class="brand-emblem">✥</span>
+      <div class="brand-text">
+        <span class="brand-title">Les Quatre Vents</span>
+        <span class="brand-sub">Table des Arcanes</span>
+      </div>
+    </div>
+
+    <nav class="topnav" aria-label="Navigation principale">
+      <button class="nav-pill hidden" id="btn-install" data-action="install-pwa" title="Installer l'application sur cet appareil">
+        <span class="pill-icon">📲</span>
+        <span>Installer</span>
+      </button>
+      <button class="nav-pill" data-action="codex" title="Explorer les 4 Decks et les 100 Cartes">
+        <span class="pill-icon">❖</span>
+        <span>Decks &amp; Codex</span>
+      </button>
+      <button class="nav-pill" data-action="rules" title="Consulter les règles du jeu">
+        <span class="pill-icon">📖</span>
+        <span>Règles</span>
+      </button>
+      <button class="nav-pill icon-pill" id="btn-sfx" data-action="toggle-sfx" title="Activer / couper les effets sonores">
+        🔊
+      </button>
+      <button class="nav-pill icon-pill" id="btn-music" data-action="toggle-music" title="Activer / couper l'ambiance musicale">
+        🎵
+      </button>
+    </nav>
+  </header>
+
+  <main id="app">
+    <!-- ÉCRAN 1 : SALON DE JEU MODERNE (HUB) -->
+    <section id="menu" class="screen lobby-screen">
+      <div class="hero-header">
+        <div class="hero-ornament">─── ✦ ✥ ✦ ───</div>
+        <h1 class="title">Les Quatre Vents</h1>
+        <p class="subtitle">Jeu de Plateau Tactique &amp; Factions Élémentaires</p>
+      </div>
+
+      <div class="lobby-grid">
+        <!-- Colonne gauche : Configuration du match -->
+        <div class="glass-panel setup-panel">
+          <div class="panel-section">
+            <h2 class="section-label">1. Mode d'affrontement &amp; Connexion sans serveur</h2>
+            <div class="segmented-row">
+              <div class="segmented" id="mode-selector" role="radiogroup" aria-label="Mode de jeu">
+                <button type="button" class="seg-btn active" data-set-mode="ai">
+                  <span class="seg-icon">⚔</span> Contre l'IA
+                </button>
+                <button type="button" class="seg-btn" data-set-mode="local">
+                  <span class="seg-icon">👥</span> 2 Joueurs (Local)
+                </button>
+                <button type="button" class="seg-btn" data-set-mode="online">
+                  <span class="seg-icon">🌐</span> Duel à Distance (P2P)
+                </button>
+                <button type="button" class="seg-btn" data-set-mode="sms">
+                  <span class="seg-icon">💬</span> Duel par SMS / Lien
+                </button>
+              </div>
+
+              <div class="segmented" id="diff-selector" role="radiogroup" aria-label="Difficulté de l'IA">
+                <button type="button" class="seg-btn" data-set-diff="novice">Apprenti</button>
+                <button type="button" class="seg-btn active" data-set-diff="tactician">Tacticien</button>
+                <button type="button" class="seg-btn" data-set-diff="master">Grand Maître</button>
+              </div>
+            </div>
+
+            <!-- Panneau de connexion P2P / SMS sans serveur -->
+            <div class="remote-box hidden" id="remote-setup-box"></div>
+          </div>
+
+          <div class="panel-section">
+            <div class="section-header-row">
+              <h2 class="section-label">2. Choix des Decks (4 Factions — 100 Cartes)</h2>
+              <div class="opponent-deck-picker">
+                <label for="select-deck-1">Deck Adverse :</label>
+                <select id="select-deck-1" class="modern-select">
+                  <option value="random">🎲 Aléatoire</option>
+                  <option value="vents">✥ Les Quatre Vents</option>
+                  <option value="forge">⚙ La Forge Céleste</option>
+                  <option value="abysses">🔱 Sanctuaire des Abysses</option>
+                  <option value="ombres">👁 Le Pacte des Ombres</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="deck-cards-grid" id="deck-selector"></div>
+          </div>
+
+          <div class="panel-section">
+            <h2 class="section-label">3. Règles de Table</h2>
+            <div class="rule-chips" id="rule-toggles">
+              <button type="button" class="rule-chip active" data-toggle-rule="elemental" title="Certaines cases confèrent +1 aux cartes du même élément et -1 aux autres">
+                <span class="chip-dot"></span>
+                <span class="chip-name">Élémentaire</span>
+                <span class="chip-desc">Cases +1 / -1</span>
+              </button>
+              <button type="button" class="rule-chip active" data-toggle-rule="synergy" title="Résonance élémentaire (+1 avec allié du même élément) et Cohésion de faction (+1 avec 2 alliés du même deck)">
+                <span class="chip-dot"></span>
+                <span class="chip-name">Synergie</span>
+                <span class="chip-desc">Résonance &amp; Faction</span>
+              </button>
+              <button type="button" class="rule-chip active" data-toggle-rule="same" title="Capture si au moins 2 côtés adjacents ont des valeurs identiques aux côtés opposés">
+                <span class="chip-dot"></span>
+                <span class="chip-name">Identique</span>
+                <span class="chip-desc">Égalités doubles</span>
+              </button>
+              <button type="button" class="rule-chip active" data-toggle-rule="plus" title="Capture si au moins 2 côtés adjacents donnent la même somme avec les côtés opposés">
+                <span class="chip-dot"></span>
+                <span class="chip-name">Plus</span>
+                <span class="chip-desc">Sommes égales</span>
+              </button>
+              <button type="button" class="rule-chip active" data-toggle-rule="combo" title="Les cartes capturées par Identique ou Plus attaquent à leur tour leurs voisines">
+                <span class="chip-dot"></span>
+                <span class="chip-name">Combo</span>
+                <span class="chip-desc">Cascade</span>
+              </button>
+              <button type="button" class="rule-chip" data-toggle-rule="open" title="Les deux mains sont visibles à découvert">
+                <span class="chip-dot"></span>
+                <span class="chip-name">Main Ouverte</span>
+                <span class="chip-desc">Cartes révélées</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="launch-bar">
+            <button type="button" class="cta-btn" id="btn-start-match">
+              <span class="cta-spark">✦</span>
+              <span>Ouvrir la Table de Jeu</span>
+              <span class="cta-spark">✦</span>
+            </button>
+            <div class="quick-stats" id="lobby-stats"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ÉCRAN 2 : TABLE DE JEU (PLATEAU) -->
+    <section id="game" class="screen game-screen hidden">
+      <div class="game-hud">
+        <div class="hud-left">
+          <button type="button" class="hud-btn" data-action="menu" title="Retourner au salon">
+            ← Salon
+          </button>
+          <button type="button" class="hud-btn" data-action="again" title="Distribuer une nouvelle manche">
+            ↻ Nouvelle Manche
+          </button>
+        </div>
+
+        <div class="turn-banner" id="message" aria-live="polite"></div>
+
+        <div class="hud-right">
+          <button type="button" class="hud-btn" id="btn-share-turn" data-action="share-turn" title="Envoyer l'état de la partie par SMS ou lien (Fallback universel)">
+            💬 Envoyer par SMS / Lien
+          </button>
+          <div class="active-rules-bar" id="active-rules-bar"></div>
+        </div>
+      </div>
+
+      <!-- Barre de statut P2P / Émotes en partie à distance -->
+      <div class="net-status-bar hidden" id="net-status-bar">
+        <span class="net-indicator" id="net-indicator">🟢 Connecté en P2P</span>
+        <div class="emote-bar">
+          <button type="button" class="emote-btn" data-emote="👏 Bien joué !">👏 Bien joué</button>
+          <button type="button" class="emote-btn" data-emote="⚡ Quel combo !">⚡ Quel combo</button>
+          <button type="button" class="emote-btn" data-emote="🔥 Belle prise !">🔥 Belle prise</button>
+        </div>
+      </div>
+
+      <div class="table">
+        <!-- Côté Joueur 2 / IA -->
+        <aside class="side side-1" id="side-panel-1">
+          <div class="player-header">
+            <div class="player-meta">
+              <span class="player-badge badge-1">♦</span>
+              <div>
+                <div class="player-name" id="name-1"></div>
+                <div class="player-deck-tag" id="deck-tag-1"></div>
+              </div>
+            </div>
+            <div class="score-gem score-1" id="score-1">5</div>
+          </div>
+          <div class="hand" id="hand-1" aria-label="Main adverse"></div>
+        </aside>
+
+        <!-- Plateau Central de Pierre & Or -->
+        <div class="board-stage">
+          <div class="board-frame">
+            <div class="corner-ornament tl"></div>
+            <div class="corner-ornament tr"></div>
+            <div class="corner-ornament bl"></div>
+            <div class="corner-ornament br"></div>
+            <div class="board" id="board" role="grid" aria-label="Plateau de jeu 3 par 3"></div>
+            <div class="combo-banner hidden" id="combo-banner" aria-live="assertive"></div>
+          </div>
+          <div class="board-hint" id="board-hint">
+            Glissez une carte sur le plateau ou cliquez pour sélectionner puis poser • Clic droit sur une carte pour l'inspecter
+          </div>
+        </div>
+
+        <!-- Côté Joueur 1 (Humain) -->
+        <aside class="side side-0" id="side-panel-0">
+          <div class="player-header">
+            <div class="player-meta">
+              <span class="player-badge badge-0">♠</span>
+              <div>
+                <div class="player-name" id="name-0"></div>
+                <div class="player-deck-tag" id="deck-tag-0"></div>
+              </div>
+            </div>
+            <div class="score-gem score-0" id="score-0">5</div>
+          </div>
+          <div class="hand" id="hand-0" aria-label="Votre main"></div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ÉCRAN 3 : CODEX & GALERIE DES 4 DECKS -->
+    <section id="codex" class="screen codex-screen hidden">
+      <div class="codex-header glass-panel">
+        <div class="codex-title-group">
+          <h2>Codex des Quatre Vents &amp; Factions</h2>
+          <p id="codex-deck-desc">Explorez les 100 cartes réparties en 4 decks équilibrés.</p>
+        </div>
+        <div class="codex-controls">
+          <div class="codex-tabs" id="codex-tabs"></div>
+          <div class="codex-filters">
+            <select id="codex-filter-level" class="modern-select">
+              <option value="all">Tous niveaux (1–5)</option>
+              <option value="1">★ Niveau 1</option>
+              <option value="2">★★ Niveau 2</option>
+              <option value="3">★★★ Niveau 3</option>
+              <option value="4">★★★★ Niveau 4</option>
+              <option value="5">★★★★★ Niveau 5</option>
+            </select>
+            <button type="button" class="hud-btn" data-action="close-codex">← Retour</button>
+          </div>
+        </div>
+      </div>
+      <div class="codex-grid" id="codex-grid"></div>
+    </section>
+
+    <!-- MODALE / INSPECTEUR DE CARTE / FIN DE PARTIE -->
+    <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true">
+      <div class="glass-panel dialog" id="dialog"></div>
+    </div>
+  </main>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "Les Quatre Vents",
+  "short_name": "Quatre Vents",
+  "description": "Jeu de cartes tactique sur grille 3x3, inspiré de Final Fantasy VIII.",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#05070f",
+  "theme_color": "#0b1a3a",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
