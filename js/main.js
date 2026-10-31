@@ -218,13 +218,169 @@ function cardEl(card, owner, { hidden = false, cell = null, board = null, boardE
   `;
 
   const bonusSuffix = reasonsTitle ? ` [${reasonsTitle}]` : '';
-  el.title = `${card.name} — Niv. ${card.level} (${elem.name})${bonusSuffix} • Clic droit pour inspecter`;
+  el.title = `${card.name} — Niv. ${card.level} (${elem.name})${bonusSuffix} • Appui long ou clic droit pour inspecter`;
   el.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     sound.playUiClick();
     showCardInspector(card, bonusContext);
   });
+
+  // Appui long tactile sur les cartes du plateau (ou non jouables) pour ouvrir l'inspecteur
+  let lpTimer = null;
+  let startX = 0;
+  let startY = 0;
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button && e.button !== 0) return;
+    startX = e.clientX;
+    startY = e.clientY;
+    clearTimeout(lpTimer);
+    lpTimer = setTimeout(() => {
+      lpTimer = null;
+      navigator.vibrate?.(15);
+      sound.playUiClick();
+      showCardInspector(card, bonusContext);
+    }, 480);
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!lpTimer) return;
+    if (Math.hypot(e.clientX - startX, e.clientY - startY) > 10) {
+      clearTimeout(lpTimer);
+      lpTimer = null;
+    }
+  });
+  const clearLp = () => {
+    if (lpTimer) {
+      clearTimeout(lpTimer);
+      lpTimer = null;
+    }
+  };
+  el.addEventListener('pointerup', clearLp);
+  el.addEventListener('pointercancel', clearLp);
+
   return el;
+}
+
+// Gestionnaire unifié Tactile + Souris (Pointer Events) pour les cartes jouables en main :
+// - Tap court : sélectionne / désélectionne la carte
+// - Glisser (Drag tactile ou souris) : crée une carte fantôme sous le doigt, prévisualise les captures sur la grille et dépose au relâchement
+function attachTactilePlayableEvents(el, handIndex, card, owner) {
+  let dragging = false;
+  let ghostEl = null;
+  let startX = 0;
+  let startY = 0;
+  let activePointerId = null;
+
+  const cleanupGhost = () => {
+    if (ghostEl) {
+      ghostEl.remove();
+      ghostEl = null;
+    }
+    el.classList.remove('dragging-source');
+    ui.board.querySelectorAll('.cell.drag-over').forEach((c) => c.classList.remove('drag-over'));
+  };
+
+  const moveGhost = (clientX, clientY, isTouch) => {
+    if (!ghostEl) return;
+    const offsetY = isTouch ? -38 : -10;
+    ghostEl.style.transform = `translate3d(${clientX}px, ${clientY + offsetY}px, 0) translate(-50%, -50%) scale(1.08)`;
+  };
+
+  const findEmptyCellAt = (clientX, clientY) => {
+    const target = document.elementFromPoint(clientX, clientY)?.closest('.cell');
+    if (!target) return null;
+    const cellIdx = Number(target.dataset.cell);
+    if (Number.isNaN(cellIdx) || game?.board[cellIdx]) return null;
+    return { cellEl: target, cellIdx };
+  };
+
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button && e.button !== 0) return;
+    if (busy || !game || game.over) return;
+    activePointerId = e.pointerId;
+    startX = e.clientX;
+    startY = e.clientY;
+    dragging = false;
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore
+    }
+  });
+
+  el.addEventListener('pointermove', (e) => {
+    if (activePointerId !== e.pointerId) return;
+    const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+
+    if (!dragging && dist >= 10) {
+      dragging = true;
+      selected = handIndex;
+      sound.playSelectCard();
+      navigator.vibrate?.(10);
+
+      // Marquer visuellement les cartes sélectionnées et les cases cibles sans détruire l'élément en cours de capture
+      ui.hands[owner].querySelectorAll('.card').forEach((c, idx) => {
+        c.classList.toggle('selected', idx === handIndex);
+      });
+      ui.board.querySelectorAll('.cell').forEach((c, idx) => {
+        if (!game.board[idx]) c.classList.add('target');
+      });
+
+      el.classList.add('dragging-source');
+      ghostEl = cardEl(card, owner);
+      ghostEl.classList.add('drag-ghost');
+      document.body.appendChild(ghostEl);
+    }
+
+    if (dragging) {
+      e.preventDefault();
+      moveGhost(e.clientX, e.clientY, e.pointerType === 'touch');
+
+      ui.board.querySelectorAll('.cell.drag-over').forEach((c) => c.classList.remove('drag-over'));
+      const found = findEmptyCellAt(e.clientX, e.clientY);
+      if (found) {
+        found.cellEl.classList.add('drag-over');
+        if (hoveredCell !== found.cellIdx) {
+          hoveredCell = found.cellIdx;
+          updatePreviewHighlights();
+        }
+      } else if (hoveredCell !== null) {
+        hoveredCell = null;
+        updatePreviewHighlights();
+      }
+    }
+  });
+
+  const finishPointer = (e, cancelled = false) => {
+    if (activePointerId !== e.pointerId) return;
+    activePointerId = null;
+    try {
+      el.releasePointerCapture(e.pointerId);
+    } catch {
+      // Ignore
+    }
+
+    if (dragging) {
+      const found = !cancelled ? findEmptyCellAt(e.clientX, e.clientY) : null;
+      cleanupGhost();
+      dragging = false;
+      if (found) {
+        navigator.vibrate?.(14);
+        selected = handIndex;
+        place(found.cellIdx);
+      } else {
+        hoveredCell = null;
+        render();
+      }
+    } else if (!cancelled) {
+      const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+      if (dist < 10 && ui.overlay.classList.contains('hidden')) {
+        select(handIndex);
+      }
+    }
+  };
+
+  el.addEventListener('pointerup', (e) => finishPointer(e, false));
+  el.addEventListener('pointercancel', (e) => finishPointer(e, true));
 }
 
 // =========================================================================
@@ -591,21 +747,14 @@ function render() {
       if (playable) {
         el.classList.add('playable');
         el.tabIndex = 0;
-        el.draggable = true;
         el.addEventListener('mouseenter', () => sound.playHover());
-        el.addEventListener('click', () => select(i));
         el.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             select(i);
           }
         });
-        el.addEventListener('dragstart', (e) => {
-          selected = i;
-          sound.playSelectCard();
-          e.dataTransfer?.setData('text/plain', String(i));
-          setTimeout(() => render(), 0);
-        });
+        attachTactilePlayableEvents(el, i, card, p);
       }
       if (playable && selected === i) el.classList.add('selected');
       handEl.appendChild(el);
@@ -717,7 +866,14 @@ function turnMessage() {
 function select(i) {
   selected = selected === i ? null : i;
   sound.playSelectCard();
-  setMessage(selected === null ? turnMessage() : 'Ciblez une case libre du plateau (aperçu des captures au survol).');
+  if (selected === null) {
+    setMessage(turnMessage());
+  } else {
+    const c = game?.hands[game.turn]?.[selected];
+    const elem = c ? ELEMENTS[c.element] : null;
+    const label = c ? `${c.name} (${elem ? `${elem.icon} ${elem.name}` : `Niv.${c.level}`})` : 'Carte sélectionnée';
+    setMessage(`${label} — touchez ou glissez vers une case libre.`);
+  }
   render();
 }
 
@@ -1221,6 +1377,14 @@ document.addEventListener('click', (e) => {
     case 'share-turn':
       sound.playUiClick();
       return showShareTurnDialog();
+    case 'inspect-selected': {
+      sound.playUiClick();
+      if (!game) return;
+      const hand = game.hands[game.turn] || [];
+      const cardToInspect = selected !== null && hand[selected] ? hand[selected] : hand[0];
+      if (cardToInspect) showCardInspector(cardToInspect);
+      return;
+    }
     case 'install-pwa':
       sound.playUiClick();
       if (deferredInstallPrompt) {

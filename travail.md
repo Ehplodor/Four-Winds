@@ -99,3 +99,17 @@ Ce document récapitule, étape par étape et au fil de l'eau, l'analyse, la con
 - Optimisation PWA mobile (`index.html`, `sw.js` v3) :
   - Ajout du bouton d'installation PWA (`beforeinstallprompt`), des balises mobile Web App (`apple-mobile-web-app-capable`) et prise en charge hors-ligne des URLs paramétrées (`ignoreSearch: true` dans `sw.js`).
 - Validation par `npm test` : **15 / 15 tests unitaires réussis**.
+
+---
+
+## Étape 9 — Ergonomie Mobile Multi-Résolutions & Prise en Charge Tactile Native (Terminé)
+- **Glisser-Déposer Tactile Unifié (`Pointer Events` dans `js/main.js`)** :
+  - Remplacement du `draggable` HTML5 (inopérant sur iOS/Android) par un système `pointerdown` / `pointermove` / `pointerup` universel avec capture de pointeur (`setPointerCapture`).
+  - Création d'une carte fantôme flottante (`.drag-ghost`) décalée au-dessus du doigt (`-38px`) pour que le pouce ne masque jamais les valeurs de la carte ni la case visée.
+  - Détection temps réel de la case survolée sous le doigt (`document.elementFromPoint`) déclenchant l'aperçu tactique des captures (`⚔ CAPTURE`), des combos et des bonus avant même de relâcher le doigt, accompagné de retours haptiques (`navigator.vibrate`).
+- **Inspection Tactile des Cartes** :
+  - Ajout de l'**appui long tactile (`480 ms`)** sur n'importe quelle carte (en main ou sur le plateau) ainsi que d'un bouton dédié **« 🔍 Inspecter »** dans la barre d'actions de la table.
+- **Adaptabilité Responsive Toutes Tailles & Toutes Résolutions (`css/style.css`)** :
+  - Calibrage simultané sur la largeur (`vw`) et la hauteur dynamique d'écran (`100dvh`) avec prise en compte des encoches (`safe-area-inset-*`) pour que **Main adverse + Plateau 3×3 + Main du joueur + HUD** tiennent intégralement sur un seul écran sans défilement vertical.
+  - Points de rupture dédiés : **Tablettes & Smartphones Portrait (`<= 900px`)**, **Petits écrans compacts (`<= 390px` ou hauteur `<= 700px`, type iPhone SE)** et **Mode Paysage Mobile (`max-height: 560px` en `landscape`)**.
+  - Contraste et taille relative des chiffres directionnels (`.vals`) renforcés sur petit écran.
