@@ -32,22 +32,30 @@
     </div>
 
     <nav class="topnav" aria-label="Navigation principale">
-      <button class="nav-pill hidden" id="btn-install" data-action="install-pwa" title="Installer l'application sur cet appareil">
-        <span class="pill-icon">📲</span>
-        <span>Installer</span>
+      <button type="button" class="nav-pill active-nav" id="nav-btn-menu" data-action="menu" title="Aller au salon principal">
+        <span class="pill-icon">🏠</span>
+        <span>Salon</span>
       </button>
-      <button class="nav-pill" data-action="codex" title="Explorer les 4 Decks et les 100 Cartes">
+      <button type="button" class="nav-pill hidden" id="nav-btn-game" data-action="resume-game" title="Revenir à la table de jeu en cours">
+        <span class="pill-icon">⚔</span>
+        <span>Table</span>
+      </button>
+      <button type="button" class="nav-pill" id="nav-btn-codex" data-action="codex" title="Explorer les 4 Decks et les 100 Cartes">
         <span class="pill-icon">❖</span>
-        <span>Decks &amp; Codex</span>
+        <span>Codex</span>
       </button>
-      <button class="nav-pill" data-action="rules" title="Consulter les règles du jeu">
+      <button type="button" class="nav-pill" data-action="rules" title="Consulter les règles du jeu">
         <span class="pill-icon">📖</span>
         <span>Règles</span>
       </button>
-      <button class="nav-pill icon-pill" id="btn-sfx" data-action="toggle-sfx" title="Activer / couper les effets sonores">
+      <button type="button" class="nav-pill hidden" id="btn-install" data-action="install-pwa" title="Installer l'application sur cet appareil">
+        <span class="pill-icon">📲</span>
+        <span>Installer</span>
+      </button>
+      <button type="button" class="nav-pill icon-pill" id="btn-sfx" data-action="toggle-sfx" title="Activer / couper les effets sonores">
         🔊
       </button>
-      <button class="nav-pill icon-pill" id="btn-music" data-action="toggle-music" title="Activer / couper l'ambiance musicale">
+      <button type="button" class="nav-pill icon-pill" id="btn-music" data-action="toggle-music" title="Activer / couper l'ambiance musicale">
         🎵
       </button>
     </nav>
@@ -222,7 +230,7 @@
             <div class="combo-banner hidden" id="combo-banner" aria-live="assertive"></div>
           </div>
           <div class="board-hint" id="board-hint">
-            Glissez une carte vers une case (ou touchez la carte puis la case) • Appui long ou clic droit pour inspecter une carte
+            Touchez une carte puis une case (ou glissez la carte sélectionnée) • Touchez une carte posée sur le plateau pour l'inspecter
           </div>
         </div>
 

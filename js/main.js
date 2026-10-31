@@ -55,6 +55,9 @@ const ui = {
   codexGrid: $('codex-grid'),
   codexDesc: $('codex-deck-desc'),
   codexFilterLevel: $('codex-filter-level'),
+  navBtnMenu: $('nav-btn-menu'),
+  navBtnGame: $('nav-btn-game'),
+  navBtnCodex: $('nav-btn-codex'),
   btnInstall: $('btn-install'),
   btnSfx: $('btn-sfx'),
   btnMusic: $('btn-music'),
@@ -108,6 +111,39 @@ let flipped = [];
 let placed = null;
 let activeCodexDeck = 'all';
 let deferredInstallPrompt = null;
+let currentScreen = 'menu'; // 'menu' | 'game' | 'codex'
+let previousScreen = 'menu';
+
+// Navigation centralisée entre les écrans (Salon, Table de jeu, Codex) avec gestion du scroll et de l'historique
+function navigateTo(screen, { pushHistory = true } = {}) {
+  document.querySelectorAll('.drag-ghost').forEach((g) => g.remove());
+  hideDialog();
+
+  if (screen !== currentScreen) {
+    previousScreen = currentScreen;
+    currentScreen = screen;
+  }
+
+  ui.menu.classList.toggle('hidden', screen !== 'menu');
+  ui.game.classList.toggle('hidden', screen !== 'game');
+  ui.codex.classList.toggle('hidden', screen !== 'codex');
+
+  ui.navBtnMenu?.classList.toggle('active-nav', screen === 'menu');
+  ui.navBtnGame?.classList.toggle('active-nav', screen === 'game');
+  ui.navBtnCodex?.classList.toggle('active-nav', screen === 'codex');
+  ui.navBtnGame?.classList.toggle('hidden', !game);
+
+  if (typeof window !== 'undefined') {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    if (pushHistory && typeof history !== 'undefined') {
+      try {
+        history.pushState({ screen }, '');
+      } catch {
+        // Ignore
+      }
+    }
+  }
+}
 
 function saveStats() {
   try {
@@ -218,53 +254,33 @@ function cardEl(card, owner, { hidden = false, cell = null, board = null, boardE
   `;
 
   const bonusSuffix = reasonsTitle ? ` [${reasonsTitle}]` : '';
-  el.title = `${card.name} — Niv. ${card.level} (${elem.name})${bonusSuffix} • Appui long ou clic droit pour inspecter`;
+  el.title = `${card.name} — Niv. ${card.level} (${elem.name})${bonusSuffix} • Cliquer / toucher sur le plateau ou clic droit pour inspecter`;
   el.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     sound.playUiClick();
     showCardInspector(card, bonusContext);
   });
 
-  // Appui long tactile sur les cartes du plateau (ou non jouables) pour ouvrir l'inspecteur
-  let lpTimer = null;
-  let startX = 0;
-  let startY = 0;
-  el.addEventListener('pointerdown', (e) => {
-    if (e.button && e.button !== 0) return;
-    startX = e.clientX;
-    startY = e.clientY;
-    clearTimeout(lpTimer);
-    lpTimer = setTimeout(() => {
-      lpTimer = null;
-      navigator.vibrate?.(15);
+  // Sur le plateau, un simple clic/tap sur une carte déjà posée ouvre l'inspecteur sans bloquer le scroll !
+  if (cell !== null) {
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
       sound.playUiClick();
       showCardInspector(card, bonusContext);
-    }, 480);
-  });
-  el.addEventListener('pointermove', (e) => {
-    if (!lpTimer) return;
-    if (Math.hypot(e.clientX - startX, e.clientY - startY) > 10) {
-      clearTimeout(lpTimer);
-      lpTimer = null;
-    }
-  });
-  const clearLp = () => {
-    if (lpTimer) {
-      clearTimeout(lpTimer);
-      lpTimer = null;
-    }
-  };
-  el.addEventListener('pointerup', clearLp);
-  el.addEventListener('pointercancel', clearLp);
+    });
+  }
 
   return el;
 }
 
 // Gestionnaire unifié Tactile + Souris (Pointer Events) pour les cartes jouables en main :
-// - Tap court : sélectionne / désélectionne la carte
-// - Glisser (Drag tactile ou souris) : crée une carte fantôme sous le doigt, prévisualise les captures sur la grille et dépose au relâchement
+// - N'intercepte JAMAIS le scroll vertical de la page au simple toucher (pas de setPointerCapture dans pointerdown).
+// - Un tap/clic court sélectionne ou désélectionne la carte.
+// - Glisser une carte (à la souris, ou au doigt lorsqu'elle est sélectionnée) crée une carte fantôme et prévisualise les captures.
 function attachTactilePlayableEvents(el, handIndex, card, owner) {
   let dragging = false;
+  let justDragged = false;
   let ghostEl = null;
   let startX = 0;
   let startY = 0;
@@ -293,18 +309,25 @@ function attachTactilePlayableEvents(el, handIndex, card, owner) {
     return { cellEl: target, cellIdx };
   };
 
+  el.addEventListener('click', () => {
+    if (justDragged) {
+      justDragged = false;
+      return;
+    }
+    if (busy || !game || game.over) return;
+    select(handIndex);
+  });
+
   el.addEventListener('pointerdown', (e) => {
     if (e.button && e.button !== 0) return;
     if (busy || !game || game.over) return;
+    // Sur tactile, on n'active le glisser-déposer que si la carte est déjà sélectionnée,
+    // afin de laisser le défilement vertical (scroll) de la page 100% libre le reste du temps.
+    if (e.pointerType === 'touch' && selected !== handIndex) return;
     activePointerId = e.pointerId;
     startX = e.clientX;
     startY = e.clientY;
     dragging = false;
-    try {
-      el.setPointerCapture(e.pointerId);
-    } catch {
-      // Ignore
-    }
   });
 
   el.addEventListener('pointermove', (e) => {
@@ -313,11 +336,16 @@ function attachTactilePlayableEvents(el, handIndex, card, owner) {
 
     if (!dragging && dist >= 10) {
       dragging = true;
+      justDragged = true;
       selected = handIndex;
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore
+      }
       sound.playSelectCard();
       navigator.vibrate?.(10);
 
-      // Marquer visuellement les cartes sélectionnées et les cases cibles sans détruire l'élément en cours de capture
       ui.hands[owner].querySelectorAll('.card').forEach((c, idx) => {
         c.classList.toggle('selected', idx === handIndex);
       });
@@ -353,16 +381,18 @@ function attachTactilePlayableEvents(el, handIndex, card, owner) {
   const finishPointer = (e, cancelled = false) => {
     if (activePointerId !== e.pointerId) return;
     activePointerId = null;
-    try {
-      el.releasePointerCapture(e.pointerId);
-    } catch {
-      // Ignore
-    }
-
     if (dragging) {
+      try {
+        el.releasePointerCapture(e.pointerId);
+      } catch {
+        // Ignore
+      }
       const found = !cancelled ? findEmptyCellAt(e.clientX, e.clientY) : null;
       cleanupGhost();
       dragging = false;
+      setTimeout(() => {
+        justDragged = false;
+      }, 80);
       if (found) {
         navigator.vibrate?.(14);
         selected = handIndex;
@@ -370,11 +400,6 @@ function attachTactilePlayableEvents(el, handIndex, card, owner) {
       } else {
         hoveredCell = null;
         render();
-      }
-    } else if (!cancelled) {
-      const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
-      if (dist < 10 && ui.overlay.classList.contains('hidden')) {
-        select(handIndex);
       }
     }
   };
@@ -603,11 +628,8 @@ function startFromRemotePacket(pkt) {
     }
   }
 
-  ui.menu.classList.add('hidden');
-  ui.codex.classList.add('hidden');
-  ui.game.classList.remove('hidden');
+  navigateTo('game');
   ui.netStatusBar?.classList.remove('hidden');
-  hideDialog();
   setMessage(turnMessage());
   render();
 }
@@ -1025,10 +1047,7 @@ function loadMatchFromCompactToken(token) {
     flipped = decoded.lastMoveResult.captured || [];
   }
 
-  ui.menu.classList.add('hidden');
-  ui.codex.classList.add('hidden');
-  ui.game.classList.remove('hidden');
-  hideDialog();
+  navigateTo('game');
 
   if (game.over) {
     render();
@@ -1130,10 +1149,7 @@ function startMatch() {
     localPlayerIndex = 0;
   }
 
-  ui.menu.classList.add('hidden');
-  ui.codex.classList.add('hidden');
-  ui.game.classList.remove('hidden');
-  hideDialog();
+  navigateTo('game');
 
   const opener =
     config.mode === 'ai' && matchFirstPlayer === 0
@@ -1144,25 +1160,22 @@ function startMatch() {
   if (!isHuman(game.turn) && config.mode === 'ai') aiTurn();
 }
 
-function showMenu() {
-  hideDialog();
-  if (typeof history !== 'undefined' && window.location.search) {
-    history.replaceState(null, '', window.location.pathname);
-  }
-  ui.game.classList.add('hidden');
-  ui.codex.classList.add('hidden');
-  ui.menu.classList.remove('hidden');
+function showMenu(opts = {}) {
+  navigateTo('menu', opts);
   renderLobby();
+}
+
+function resumeGame(opts = {}) {
+  if (!game) return showMenu(opts);
+  navigateTo('game', opts);
+  render();
 }
 
 // =========================================================================
 // CODEX DES 100 CARTES & INSPECTEUR
 // =========================================================================
-function showCodex() {
-  hideDialog();
-  ui.menu.classList.add('hidden');
-  ui.game.classList.add('hidden');
-  ui.codex.classList.remove('hidden');
+function showCodex(opts = {}) {
+  navigateTo('codex', opts);
   renderCodex();
 }
 
@@ -1361,10 +1374,16 @@ document.addEventListener('click', (e) => {
       return showRules();
     case 'codex':
       sound.playUiClick();
+      if (currentScreen === 'codex') {
+        return previousScreen === 'game' && game ? resumeGame() : showMenu();
+      }
       return showCodex();
     case 'close-codex':
       sound.playUiClick();
-      return showMenu();
+      return previousScreen === 'game' && game ? resumeGame() : showMenu();
+    case 'resume-game':
+      sound.playUiClick();
+      return resumeGame();
     case 'close':
       sound.playUiClick();
       return hideDialog();
@@ -1417,6 +1436,29 @@ ui.codexFilterLevel?.addEventListener('change', () => {
 $('brand-home')?.addEventListener('click', () => {
   sound.playUiClick();
   showMenu();
+});
+
+$('brand-home')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    sound.playUiClick();
+    showMenu();
+  }
+});
+
+window.addEventListener('popstate', (e) => {
+  if (!ui.overlay.classList.contains('hidden')) {
+    hideDialog();
+    return;
+  }
+  const target = e.state?.screen || 'menu';
+  if (target === 'game' && game) {
+    resumeGame({ pushHistory: false });
+  } else if (target === 'codex') {
+    showCodex({ pushHistory: false });
+  } else {
+    showMenu({ pushHistory: false });
+  }
 });
 
 document.addEventListener('keydown', (e) => {

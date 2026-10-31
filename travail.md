@@ -113,3 +113,17 @@ Ce document récapitule, étape par étape et au fil de l'eau, l'analyse, la con
   - Calibrage simultané sur la largeur (`vw`) et la hauteur dynamique d'écran (`100dvh`) avec prise en compte des encoches (`safe-area-inset-*`) pour que **Main adverse + Plateau 3×3 + Main du joueur + HUD** tiennent intégralement sur un seul écran sans défilement vertical.
   - Points de rupture dédiés : **Tablettes & Smartphones Portrait (`<= 900px`)**, **Petits écrans compacts (`<= 390px` ou hauteur `<= 700px`, type iPhone SE)** et **Mode Paysage Mobile (`max-height: 560px` en `landscape`)**.
   - Contraste et taille relative des chiffres directionnels (`.vals`) renforcés sur petit écran.
+
+---
+
+## Étape 10 — Correction de la Navigation Globale et du Défilement (Scroll) (Terminé)
+- **Correction du blocage CSS du scroll (`css/style.css`)** :
+  - Suppression du double `overflow-x: hidden` et `overscroll-behavior-y: contain` sur le couple `html, body` qui créait deux conteneurs de défilement concurrents et empêchait le scroll vertical à la molette ou au doigt dans le Salon et le Codex.
+  - Suppression du `touch-action: none` permanent sur toutes les cartes jouables (appliqué désormais uniquement lorsqu'une carte est déjà sélectionnée ou en cours de glissement), libérant le scroll vertical tactile partout sur la page.
+- **Correction des écouteurs tactiles qui interceptaient le scroll (`js/main.js`)** :
+  - Suppression du minuteur `pointerdown` d'appui long sur les 100 cartes du Codex qui ouvrait intempestivement l'inspecteur de carte pendant que l'utilisateur faisait défiler la grille du Codex au doigt.
+  - Déplacement de `setPointerCapture` dans `pointermove` (uniquement après dépassement du seuil de glissement de `10px`), pour ne jamais bloquer un tap ou un scroll natif au `pointerdown`.
+- **Refonte de la Navigation Globale (`navigateTo` dans `js/main.js` & `.topbar` dans `index.html`)** :
+  - Ajout des boutons explicites **🏠 Salon**, **⚔ Table** (visible dès qu'une partie est en cours pour y revenir à tout moment), **❖ Codex** et **📖 Règles** avec indicateur visuel de l'écran actif (`.active-nav`).
+  - Mémorisation de l'écran précédent (`previousScreen`) pour que le bouton `← Retour` du Codex ramène directement à la partie en cours si on l'avait ouvert depuis la table de jeu.
+  - Remise à zéro automatique du scroll (`window.scrollTo(0, 0)`) à chaque changement d'écran et prise en charge du bouton Retour natif du navigateur / smartphone (`popstate`).
