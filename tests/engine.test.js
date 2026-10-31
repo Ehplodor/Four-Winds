@@ -199,6 +199,8 @@ test('les 4 decks (100 cartes) sont valides, uniques, bien dosés et illustrés 
         assert.ok(ELEMENTS[c.element], `Élément invalide sur ${c.id}`);
         const svg = renderCardArtSVG(c);
         assert.ok(svg.startsWith('<svg') && svg.includes('</svg>'));
+        assert.ok(svg.includes('linearGradient') && svg.includes('radialGradient'));
+        assert.ok(svg.length > 1500, `Illustration SVG de ${c.id} trop basique (${svg.length} car.)`);
       }
     }
 

@@ -1,5 +1,5 @@
 // Service worker : met l'application en cache pour jouer hors ligne et gérer les liens ?room= / ?turn= sur mobile.
-const VERSION = 'v5';
+const VERSION = 'v6';
 const CACHE = `quatre-vents-${VERSION}`;
 const ASSETS = [
   './',
@@ -9,6 +9,7 @@ const ASSETS = [
   'js/engine.js',
   'js/ai.js',
   'js/cards.js',
+  'js/art.js',
   'js/audio.js',
   'js/network.js',
   'manifest.webmanifest',

@@ -127,3 +127,21 @@ Ce document récapitule, étape par étape et au fil de l'eau, l'analyse, la con
   - Ajout des boutons explicites **🏠 Salon**, **⚔ Table** (visible dès qu'une partie est en cours pour y revenir à tout moment), **❖ Codex** et **📖 Règles** avec indicateur visuel de l'écran actif (`.active-nav`).
   - Mémorisation de l'écran précédent (`previousScreen`) pour que le bouton `← Retour` du Codex ramène directement à la partie en cours si on l'avait ouvert depuis la table de jeu.
   - Remise à zéro automatique du scroll (`window.scrollTo(0, 0)`) à chaque changement d'écran et prise en charge du bouton Retour natif du navigateur / smartphone (`popstate`).
+
+---
+
+## Étape 11 — Refonte Artistique Majeure des Illustrations Vectorielles des 100 Cartes (`js/art.js`, `js/cards.js`, `css/style.css`) (Terminé)
+- **Diagnostic des limites des anciennes illustrations** :
+  - Les illustrations initiales dans `js/cards.js` se limitaient à un fond radial uni et 1 à 3 tracés géométriques monochromes (`currentColor`), sans décor, sans volume ni différenciation entre deux cartes partageant le même motif.
+- **Création du moteur d'illustration multicouche `js/art.js` (architecture en 7 plans artistiques)** :
+  1. **Ciel & Atmosphère profonde** : triple jeu de dégradés (`radialGradient` + 2 `linearGradient`) calculés harmoniquement à partir de la teinte (`hue`) de la carte.
+  2. **Décor panoramique de Faction (`renderDeckBackdrop`)** :
+     - *Les Quatre Vents* : montagnes escarpées au crépuscule et astre ancien.
+     - *La Forge Céleste* : anneaux d'horlogerie astrale, silhouettes de citadelle mécanique et lignes de visée.
+     - *Sanctuaire des Abysses* : rayons solaires sous-marins, houle abyssale et colonnes englouties.
+     - *Le Pacte des Ombres* : arche gothique de nécropole et lune d'éclipse.
+  3. **Aura Élémentaire (`renderElementAura`)** : effets graphiques dédiés aux 8 éléments (flammes ascendantes pour le Feu, cristaux pour la Glace, éclairs ramifiés pour la Foudre, courants et bulles pour l'Eau, éclats rocheux pour la Terre, rayons zénithaux pour la Lumière, volutes pour l'Ombre, souffles aériens pour le Vent).
+  4. **Halo de Rareté & Géométrie Sacrée (`renderRarityHalo`)** : cercles d'invocation progressifs de ★ à ★★★★★ (sceau runique complet et couronne stellaire dorée au niveau 5).
+  5. **Sujet Principal Multicouche (`renderMotifIllustration`)** : refonte intégrale des **28 archétypes graphiques** (`dragon`, `phoenix`, `sword`, `shield`, `gear`, `trident`, `kraken`, `crown`, `eye`, `skull`, `wing`, `serpent`, `bolt`, `monolith`, `portal`, `compass`, `anchor`, `hammer`, `horns`, `diamond`, `wave`, `moon`, `scarab`, `ghost`, `fang`, `leaf`, `jelly`, `shell`, `crest`, `cross`, `spore`, `spark`, `star`) avec facettes biseautées 3D, rehauts spéculaires, runes gravées, yeux ardents et ombres portées.
+  6. **Signature Procédurale Unique par Carte (`hashCardId` & `makeCardRng`)** : génération déterministe d'éclats lumineux, de posture/inclinaison et de filigrane garantissant que chacune des 100 cartes possède une empreinte visuelle unique.
+  7. **Cadre d'Orfèvrerie & Effet Foil (`renderOrnateInnerFrame` & `css/style.css`)** : filet intérieur à écoinçons ciselés, vignettage dramatique et reflet métallique (foil) sur les cartes de niveau 4 et 5.
