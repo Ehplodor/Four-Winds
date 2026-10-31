@@ -26,7 +26,8 @@ TCG-FF8/
 │   └── style.css            # Feuille de style globale (layout, plateau, cartes, animations, responsive)
 ├── js/
 │   ├── engine.js            # Moteur de règles pur (état immuable, Élémentaire, Synergie, Identique, Plus, Combo)
-│   ├── cards.js             # Catalogue de 100 cartes, 4 decks thématiques, 8 éléments et générateur SVG
+│   ├── cards.js             # Catalogue de 100 cartes, 4 decks thématiques, 8 éléments et distribution des mains
+│   ├── art.js               # Moteur d'illustration SVG multicouche (décors de faction, auras, 33 motifs, particules)
 │   ├── ai.js                # Intelligence artificielle à 3 niveaux (Novice, Tacticien, Grand Maître Minimax)
 │   ├── audio.js             # Synthétiseur Web Audio API (bruitages de plateau et musique générative)
 │   ├── network.js           # Multijoueur sans serveur (WebRTC P2P + Courtiers WSS publics + Codec SMS/URL compact)
@@ -53,8 +54,9 @@ L'application suit une architecture modulaire en couches unidirectionnelles :
         /       │       \
        ▼        ▼        ▼
 [js/cards.js] [js/ai.js] [js/engine.js]
-                  \          ▲
-                   ──────────┘
+       │
+       ▼
+  [js/art.js]
 ```
 
 ### 3.1. `js/engine.js` — Le Moteur de Règles Pur
@@ -83,6 +85,12 @@ L'application suit une architecture modulaire en couches unidirectionnelles :
   - `values` : tableau `[haut, droite, bas, gauche]` compris entre `1` et `10` (`10` étant affiché `'A'` via `displayValue(v)`).
   - `glyph` & `hue` : caractère symbolique Unicode et teinte HSL servant au rendu procédural de l'illustration.
 - **Distribution (`dealHands`)** : Tire aléatoirement 1 carte de chaque niveau (1 à 5) pour chaque joueur sans doublon entre les deux mains, garantissant l'équité mathématique des niveaux.
+- **Illustration** : `renderCardArtSVG(card)` est ré-exporté depuis `js/art.js`, qui compose le SVG final (décor de faction, aura élémentaire, halo de rareté, sujet, particules, cadre).
+
+### 3.2.1. `js/art.js` — Moteur d'Illustration Vectorielle
+- **Responsabilité** : Produire un SVG autonome, déterministe et unique pour chacune des 100 cartes.
+- **Composition en 7 plans** : ciel dégradé, faisceaux de lumière, décor de faction, aura élémentaire, halo de rareté, sujet principal multicouche (33 motifs), particules procédurales et cadre d'orfèvrerie.
+- **Déterminisme** : un hash FNV-1a de l'`id` de la carte alimente un générateur Mulberry32 pour l'inclinaison, les éclats et le filigrane, garantissant un rendu stable entre deux sessions.
 
 ### 3.3. `js/ai.js` — Intelligence Artificielle
 - **Responsabilité** : Choisir un coup valide `{ handIndex, cell }` lorsque c'est au tour de l'ordinateur.

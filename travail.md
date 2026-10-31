@@ -142,6 +142,32 @@ Ce document récapitule, étape par étape et au fil de l'eau, l'analyse, la con
      - *Le Pacte des Ombres* : arche gothique de nécropole et lune d'éclipse.
   3. **Aura Élémentaire (`renderElementAura`)** : effets graphiques dédiés aux 8 éléments (flammes ascendantes pour le Feu, cristaux pour la Glace, éclairs ramifiés pour la Foudre, courants et bulles pour l'Eau, éclats rocheux pour la Terre, rayons zénithaux pour la Lumière, volutes pour l'Ombre, souffles aériens pour le Vent).
   4. **Halo de Rareté & Géométrie Sacrée (`renderRarityHalo`)** : cercles d'invocation progressifs de ★ à ★★★★★ (sceau runique complet et couronne stellaire dorée au niveau 5).
-  5. **Sujet Principal Multicouche (`renderMotifIllustration`)** : refonte intégrale des **28 archétypes graphiques** (`dragon`, `phoenix`, `sword`, `shield`, `gear`, `trident`, `kraken`, `crown`, `eye`, `skull`, `wing`, `serpent`, `bolt`, `monolith`, `portal`, `compass`, `anchor`, `hammer`, `horns`, `diamond`, `wave`, `moon`, `scarab`, `ghost`, `fang`, `leaf`, `jelly`, `shell`, `crest`, `cross`, `spore`, `spark`, `star`) avec facettes biseautées 3D, rehauts spéculaires, runes gravées, yeux ardents et ombres portées.
+  5. **Sujet Principal Multicouche (`renderMotifIllustration`)** : refonte intégrale des **33 archétypes graphiques** (`dragon`, `phoenix`, `sword`, `shield`, `gear`, `trident`, `kraken`, `crown`, `eye`, `skull`, `wing`, `serpent`, `bolt`, `monolith`, `portal`, `compass`, `anchor`, `hammer`, `horns`, `diamond`, `wave`, `moon`, `scarab`, `ghost`, `fang`, `leaf`, `jelly`, `shell`, `crest`, `cross`, `spore`, `spark`, `star`) avec facettes biseautées 3D, rehauts spéculaires, runes gravées, yeux ardents et ombres portées.
   6. **Signature Procédurale Unique par Carte (`hashCardId` & `makeCardRng`)** : génération déterministe d'éclats lumineux, de posture/inclinaison et de filigrane garantissant que chacune des 100 cartes possède une empreinte visuelle unique.
   7. **Cadre d'Orfèvrerie & Effet Foil (`renderOrnateInnerFrame` & `css/style.css`)** : filet intérieur à écoinçons ciselés, vignettage dramatique et reflet métallique (foil) sur les cartes de niveau 4 et 5.
+
+---
+
+## Étape 12 — Deuxième Passe Artistique : Composition, Créatures et Habillage Haut de Gamme (Terminé)
+- **Correction de la palette chromatique (`js/art.js`)** :
+  - Passage à une palette **analogique** (`h2 = h + 26`, `h3 = h - 26`) au lieu d'un décalage de 36–40° qui faisait virer les cartes dorées de la Forge au vert.
+  - Fonds plus profonds et contrastés, accents lumineux conservés dans la famille de teinte de chaque carte.
+- **Enrichissement de la composition** :
+  - Ajout de **faisceaux de lumière zénithaux** (`linearGradient` dédié) traversant l'illustration.
+  - Ajout d'un **socle d'ombre au sol** (double ellipse) pour ancrer les sujets et supprimer l'effet « flottant ».
+- **Refonte des créatures et motifs les plus faibles** :
+  - `dragon` : passage à une **composition de profil** (cou allongé, museau, mâchoire, crocs, cornes, aile membraneuse nervurée, queue à dard, pattes griffues, souffle de braise).
+  - `phoenix` : oiseau de feu de profil avec aile à **rémiges primaires étagées**, longue queue en trois plumes, bec, œil et couronne de flammes.
+  - `fang` : **tête de loup de profil** (museau allongé, oreilles dressées, crocs, œil de braise, fourrure et griffures).
+  - `horns` : **tête de taureau frontale** avec cornes effilées, anneau nasal, crinière et rune frontale.
+  - `wing` : aile céleste à **silhouette festonnée continue**, lobes de plumes secondaires, divisions de rémiges, couverture de plumes et gemme d'épaule.
+  - `skull` : crâne de **liche encapuchonné** en couleur os (nouveau dégradé `bone-`), orbites angulaires, mâchoire dentée, fêlures et rune.
+  - `jelly` : méduse translucide avec ombrelle festonnée, bras oraux, sept tentacules ondulants et bioluminescence.
+  - `serpent` : écailles ventrales lumineuses, ombrage du corps et capuche de cobra conservée.
+- **Habillage des cartes (`css/style.css`)** :
+  - Cadre à **double filet doré**, écoinçons ciselés (pseudo-éléments `::before` / `::after`) et bordures de rareté retravaillées.
+  - Cartouche de nom en **serif doré** avec liseré, pastille d'étoiles de niveau et badge élémentaire à double anneau lumineux.
+  - **Dos de carte** enrichi : rosace circulaire, motif croisé, médaillon central et halo doré.
+  - Effet **foil animé** réservé aux cartes légendaires (Niv. 5) et désactivé si `prefers-reduced-motion`.
+- **Validation** : `npm test` — **15 / 15 tests réussis**, et contrôle automatisé des 100 SVG (aucun `NaN`/`undefined`, aucun doublon d'identifiant, parsing XML valide).
+- **PWA** : `sw.js` passe en **v7** pour invalider le cache et prendre en compte les nouvelles illustrations et l'habillage CSS.

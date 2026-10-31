@@ -1119,31 +1119,75 @@ button, select, input {
   position: relative;
   width: var(--card-w);
   height: var(--card-h);
-  border-radius: 8px;
-  border: 2px solid #d5dbe8;
-  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.65);
+  border-radius: 9px;
+  border: 2px solid #cfd6e6;
+  box-shadow:
+    0 6px 16px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
   overflow: hidden;
   flex: none;
   z-index: 2;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+/* Filet d'orfèvrerie intérieur et écoinçons ciselés (hors dos de carte) */
+.card:not(.back)::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  z-index: 4;
+  border-radius: 6px;
+  border: 1px solid rgba(242, 212, 107, 0.38);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.55),
+    inset 0 0 10px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.card:not(.back)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border-radius: 8px;
+  --corner: calc(var(--card-w) * 0.16);
+  background:
+    linear-gradient(135deg, rgba(255, 232, 150, 0.85), transparent 62%) top left / var(--corner) var(--corner) no-repeat,
+    linear-gradient(225deg, rgba(255, 232, 150, 0.85), transparent 62%) top right / var(--corner) var(--corner) no-repeat,
+    linear-gradient(45deg, rgba(255, 232, 150, 0.85), transparent 62%) bottom left / var(--corner) var(--corner) no-repeat,
+    linear-gradient(315deg, rgba(255, 232, 150, 0.85), transparent 62%) bottom right / var(--corner) var(--corner) no-repeat;
+  pointer-events: none;
+  opacity: 0.75;
+}
+
 /* Bordure selon le niveau de rareté */
+.card.level-2 { border-color: #cbd5e1; }
 .card.level-3 { border-color: #a5f3fc; }
-.card.level-4 { border-color: #e9d5ff; }
+.card.level-4 {
+  border-color: #e9d5ff;
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.72),
+    0 0 12px rgba(192, 132, 252, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
 .card.level-5 {
   border-color: var(--gold);
-  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(242, 212, 107, 0.55);
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.78),
+    0 0 18px rgba(242, 212, 107, 0.42),
+    inset 0 0 0 1px rgba(242, 212, 107, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .card.owner-0 {
-  background: linear-gradient(155deg, var(--p0-light) 0%, var(--p0-main) 48%, var(--p0-dark) 100%);
+  background: linear-gradient(160deg, #466fd8 0%, #1d337a 46%, #0a1228 100%);
 }
 .card.owner-1 {
-  background: linear-gradient(155deg, var(--p1-light) 0%, var(--p1-main) 48%, var(--p1-dark) 100%);
+  background: linear-gradient(160deg, #d94f7c 0%, #7c1839 46%, #2a0813 100%);
 }
 .card.owner-neutral {
-  background: linear-gradient(155deg, #334155 0%, #1e293b 55%, #0f172a 100%);
+  background: linear-gradient(160deg, #475569 0%, #243247 55%, #0d1524 100%);
 }
 
 /* Fenêtre d'illustration vectorielle SVG */
@@ -1152,8 +1196,9 @@ button, select, input {
   inset: 5% 5% 21% 5%;
   border-radius: 5px;
   overflow: hidden;
+  border: 1px solid rgba(242, 212, 107, 0.34);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.36),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.55),
     inset 0 0 18px rgba(0, 0, 0, 0.72),
     0 2px 6px rgba(0, 0, 0, 0.45);
   display: flex;
@@ -1175,8 +1220,18 @@ button, select, input {
     rgba(255, 255, 255, 0.12) 56%,
     transparent 80%
   );
+  background-size: 240% 240%;
   mix-blend-mode: screen;
   pointer-events: none;
+}
+
+.card.level-5 .art::after {
+  animation: foilSweep 7.5s ease-in-out infinite;
+}
+
+@keyframes foilSweep {
+  0%, 100% { background-position: 120% 0%; }
+  50% { background-position: -20% 100%; }
 }
 
 .card .art-svg {
@@ -1229,16 +1284,22 @@ button, select, input {
   top: 6%;
   right: 7%;
   z-index: 3;
-  width: calc(var(--card-w) * 0.2);
-  height: calc(var(--card-w) * 0.2);
+  width: calc(var(--card-w) * 0.21);
+  height: calc(var(--card-w) * 0.21);
   border-radius: 50%;
   display: grid;
   place-items: center;
   font-size: calc(var(--card-w) * 0.115);
-  background: rgba(8, 12, 24, 0.78);
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.28), transparent 55%),
+    rgba(8, 12, 24, 0.86);
   border: 1px solid var(--elem-color, rgba(255, 255, 255, 0.5));
   color: var(--elem-color, #fff);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
+  box-shadow:
+    0 0 0 2px rgba(4, 7, 14, 0.72),
+    0 2px 6px rgba(0, 0, 0, 0.7),
+    0 0 8px color-mix(in srgb, var(--elem-color, #fff) 40%, transparent);
+  text-shadow: 0 0 6px var(--elem-color, #fff);
 }
 
 /* Modificateur élémentaire (+1 / -1) affiché sur le plateau */
@@ -1268,12 +1329,18 @@ button, select, input {
 .card .stars {
   position: absolute;
   bottom: 22%;
-  right: 7%;
+  right: 6%;
   z-index: 3;
-  font-size: calc(var(--card-w) * 0.08);
+  padding: 1px 5px 2px;
+  border-radius: 999px;
+  font-size: calc(var(--card-w) * 0.072);
   color: var(--gold-bright);
-  letter-spacing: -1px;
+  letter-spacing: 0.02em;
+  background: rgba(5, 8, 18, 0.78);
+  border: 1px solid rgba(242, 212, 107, 0.45);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   text-shadow: 0 1px 2px #000;
+  line-height: 1.1;
 }
 
 /* Cartouche de nom en bas */
@@ -1284,8 +1351,13 @@ button, select, input {
   bottom: 3%;
   height: 15%;
   border-radius: 4px;
-  background: rgba(6, 10, 22, 0.76);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: linear-gradient(180deg, rgba(14, 20, 38, 0.9) 0%, rgba(5, 8, 16, 0.97) 100%);
+  border: 1px solid rgba(242, 212, 107, 0.26);
+  border-top-color: rgba(242, 212, 107, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.65),
+    0 1px 4px rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1293,21 +1365,30 @@ button, select, input {
 }
 
 .card .name {
-  font-size: calc(var(--card-w) * 0.088);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: calc(var(--card-w) * 0.084);
   font-weight: 600;
+  letter-spacing: 0.01em;
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #f8fafc;
+  color: #fdf6e3;
+  text-shadow: 0 1px 2px #000, 0 0 6px rgba(242, 212, 107, 0.18);
 }
 
 /* Dos de carte ouvragé */
 .card.back {
   background:
+    radial-gradient(circle at 50% 50%, rgba(242, 212, 107, 0.18) 0%, transparent 42%),
     radial-gradient(circle at 50% 50%, #3b2a14 0%, #1c1208 75%),
-    repeating-linear-gradient(45deg, rgba(242, 212, 107, 0.08) 0 5px, transparent 5px 10px);
+    repeating-linear-gradient(45deg, rgba(242, 212, 107, 0.09) 0 3px, transparent 3px 9px),
+    repeating-linear-gradient(-45deg, rgba(242, 212, 107, 0.06) 0 3px, transparent 3px 9px);
   border-color: #b89748;
+  box-shadow:
+    0 6px 16px rgba(0, 0, 0, 0.7),
+    inset 0 0 0 1px rgba(242, 212, 107, 0.35),
+    inset 0 0 24px rgba(0, 0, 0, 0.6);
 }
 
 .card.back::before {
@@ -1315,18 +1396,31 @@ button, select, input {
   position: absolute;
   inset: 7%;
   border: 1px solid rgba(242, 212, 107, 0.45);
-  border-radius: 4px;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.5),
+    inset 0 0 18px rgba(242, 212, 107, 0.14);
 }
 
 .card.back::after {
   content: "✥";
   position: absolute;
-  inset: 0;
+  left: 50%;
+  top: 50%;
+  width: 46%;
+  height: 46%;
+  transform: translate(-50%, -50%);
   display: grid;
   place-items: center;
-  font-size: calc(var(--card-w) * 0.42);
+  border-radius: 50%;
+  border: 1px solid rgba(242, 212, 107, 0.55);
+  background:
+    radial-gradient(circle at 38% 32%, rgba(255, 255, 255, 0.16), transparent 55%),
+    radial-gradient(circle, rgba(58, 40, 18, 0.95), rgba(20, 12, 6, 0.98));
+  font-size: calc(var(--card-w) * 0.3);
   color: var(--gold);
-  text-shadow: 0 0 12px rgba(242, 212, 107, 0.6);
+  text-shadow: 0 0 12px rgba(242, 212, 107, 0.75), 0 1px 2px #000;
+  box-shadow: 0 0 14px rgba(242, 212, 107, 0.22), inset 0 0 10px rgba(0, 0, 0, 0.7);
 }
 
 /* Animations de pose et retournement */
@@ -1857,7 +1951,8 @@ button, select, input {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .card.drop, .card.flip, .cell.target, .combo-banner {
+  .card.drop, .card.flip, .cell.target, .combo-banner,
+  .card.level-5 .art::after {
     animation: none;
   }
 }

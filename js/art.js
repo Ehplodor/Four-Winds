@@ -5,7 +5,7 @@
 //    Colonnes & Abysses océaniques, Arche gothique & Lune d'éclipse des Ombres)
 // 3. Aura élémentaire (flammes, cristaux de givre, arcs de foudre, tourbillons d'éther, etc.)
 // 4. Halo runique et géométrie sacrée évoluant selon le niveau de rareté (★ à ★★★★★)
-// 5. Sujet principal multi-couches (28 archétypes d'illustrations détaillées : ombres portées,
+// 5. Sujet principal multi-couches (33 archétypes d'illustrations détaillées : ombres portées,
 //    volumes en dégradé, rehauts spéculaires, yeux lumineux, runes et variantes procédurales uniques par carte)
 // 6. Particules d'ambiance et éclats de lumière déterministes propres à l'identifiant de la carte
 // 7. Cadre intérieur d'orfèvrerie (filets dorés, écoinçons ciselés et vignettage dramatique)
@@ -172,6 +172,7 @@ function renderRarityHalo(level, c) {
 function renderMotifIllustration(motif, uid, c, variant, card) {
   const fillMain = `url(#m-${uid})`;
   const fillSub = `url(#s-${uid})`;
+  const fillBone = `url(#bone-${uid})`;
   const fillDark = c.deep;
   const strokeLight = c.bright;
   const eyeColor = variant % 2 === 0 ? '#fef08a' : '#ffffff';
@@ -179,44 +180,70 @@ function renderMotifIllustration(motif, uid, c, variant, card) {
   switch (motif) {
     case 'dragon':
       return `
-        <!-- Grandes ailes membraneuses -->
-        <path d="M48 42 C32 22 14 14 4 22 C8 34 10 48 6 62 C18 54 28 56 36 64 C40 54 44 48 48 42 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.2"/>
-        <path d="M52 42 C68 22 86 14 96 22 C92 34 90 48 94 62 C82 54 72 56 64 64 C60 54 56 48 52 42 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.2"/>
-        <!-- Nervures d'ailes -->
-        <path d="M44 38 L14 32 M42 44 L14 46 M40 50 L20 56 M56 38 L86 32 M58 44 L86 46 M60 50 L80 56" stroke="${strokeLight}" stroke-width="0.9" opacity="0.65"/>
-        <!-- Queue et corps serpentin -->
-        <path d="M50 48 C44 62 34 74 44 84 C52 90 66 84 62 74 C58 66 50 72 52 80" fill="none" stroke="${fillMain}" stroke-width="6.5" stroke-linecap="round"/>
-        <path d="M50 48 C44 62 34 74 44 84 C52 90 66 84 62 74" fill="none" stroke="${strokeLight}" stroke-width="1.4" stroke-dasharray="3 3"/>
-        <!-- Torse cuirassé -->
-        <path d="M38 42 L50 30 L62 42 L56 68 L44 68 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.2"/>
-        <path d="M44 44 L56 44 M45 50 L55 50 M46 56 L54 56 M47 62 L53 62" stroke="${fillDark}" stroke-width="1.5"/>
-        <!-- Cornes royales -->
-        <path d="M42 26 C34 14 24 10 18 12 C24 18 30 24 38 30 Z" fill="${c.accent}" stroke="${strokeLight}" stroke-width="1"/>
-        <path d="M58 26 C66 14 76 10 82 12 C76 18 70 24 62 30 Z" fill="${c.accent}" stroke="${strokeLight}" stroke-width="1"/>
-        <!-- Tête de dragon ciselée -->
-        <path d="M50 14 L61 26 L57 42 L50 47 L43 42 L39 26 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.4"/>
-        <!-- Souffle draconique -->
-        <path d="M46 46 Q50 56 54 46 Q50 62 50 52" fill="#fef08a" opacity="0.85"/>
-        <!-- Yeux ardents -->
-        <polygon points="42,29 48,32 43,34" fill="${eyeColor}"/>
-        <polygon points="58,29 52,32 57,34" fill="${eyeColor}"/>
-        <polygon points="50,18 53,25 50,36 47,25" fill="#fff" opacity="0.45"/>`;
+        <!-- Aura de feu draconique -->
+        <path d="M28 18 C48 4 74 12 84 32 C94 54 82 76 62 86 C40 96 18 84 14 62 C10 42 16 26 28 18 Z" fill="${c.accent}" opacity="0.13"/>
+        <!-- Grande aile membraneuse déployée -->
+        <path d="M52 42 C60 24 76 10 94 12 C90 24 90 36 96 48 C84 42 74 44 66 54 C62 48 57 44 52 42 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.3" stroke-linejoin="round"/>
+        <path d="M54 42 L80 20 M56 46 L84 30 M58 50 L88 42 M60 54 L90 50" stroke="${strokeLight}" stroke-width="0.9" opacity="0.7"/>
+        <path d="M94 12 L88 20 L92 24 M96 48 L88 44 L90 38" fill="none" stroke="${c.accent}" stroke-width="1.1"/>
+        <!-- Queue épineuse et dard caudal -->
+        <path d="M58 58 C70 68 82 76 94 72 C88 80 76 84 64 80 C58 78 54 72 52 66" fill="none" stroke="${fillMain}" stroke-width="5.5" stroke-linecap="round"/>
+        <path d="M58 58 C70 68 82 76 94 72" fill="none" stroke="${strokeLight}" stroke-width="1.2" stroke-dasharray="2.5 3" opacity="0.8"/>
+        <path d="M94 72 L99 65 L96 78 Z" fill="${c.accent}" stroke="${strokeLight}" stroke-width="0.9"/>
+        <!-- Corps cuirassé et ventre écailleux -->
+        <path d="M36 44 C46 36 62 38 68 50 C72 60 66 70 56 74 C46 78 36 70 32 58 C30 52 32 47 36 44 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.4"/>
+        <path d="M38 54 Q46 58 54 56 M38 60 Q46 64 54 62 M40 66 Q47 70 54 68" fill="none" stroke="${strokeLight}" stroke-width="1" opacity="0.7"/>
+        <!-- Pattes et griffes -->
+        <path d="M42 68 L34 82 L42 82 L48 72 M56 68 L62 82 L70 80 L62 70" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.1" stroke-linejoin="round"/>
+        <path d="M34 82 L30 87 M38 82 L36 88 M42 82 L42 88 M62 82 L60 88 M66 82 L66 88 M70 80 L74 86" stroke="#fff" stroke-width="1" opacity="0.8"/>
+        <!-- Cou et tête de dragon -->
+        <path d="M36 44 C28 38 22 32 20 24 C30 24 40 32 46 40 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.2"/>
+        <path d="M24 22 C14 18 4 24 2 32 C6 38 16 40 26 38 C34 36 36 28 32 24 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.4"/>
+        <path d="M2 32 C8 42 20 44 28 40 C32 38 34 34 32 32 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1"/>
+        <!-- Cornes et crête -->
+        <path d="M30 20 C34 10 42 4 50 6 C42 12 38 18 36 24 Z" fill="${c.accent}" stroke="${strokeLight}" stroke-width="0.9"/>
+        <path d="M22 20 C18 12 20 6 24 2 C24 10 26 16 28 20 Z" fill="${c.accent}" stroke="${strokeLight}" stroke-width="0.9"/>
+        <path d="M38 40 L36 34 L42 38 M46 38 L46 32 L52 38 M56 40 L58 34 L62 42" fill="${c.accent}" stroke="${strokeLight}" stroke-width="0.7"/>
+        <!-- Œil, crocs et souffle -->
+        <ellipse cx="21" cy="27" rx="2.8" ry="1.9" fill="${eyeColor}"/>
+        <ellipse cx="21" cy="27" rx="1" ry="1.7" fill="${fillDark}"/>
+        <path d="M8 34 L10 40 L13 35 M15 36 L17 42 L20 36 M23 36 L25 41 L27 35" fill="#fff"/>
+        <path d="M2 32 C-2 30 -2 38 2 40 C4 36 6 36 8 37" fill="#fef08a" opacity="0.85"/>
+        <circle cx="50" cy="48" r="2.2" fill="#fff" opacity="0.55"/>`;
 
     case 'phoenix':
       return `
-        <!-- Halo de plumes de feu -->
-        <path d="M50 44 L22 14 L30 36 L8 26 L24 46 L6 48 L26 58 L14 72 L36 66 L50 88 L64 66 L86 72 L74 58 L94 48 L76 46 L92 26 L70 36 L78 14 Z" fill="${fillSub}" opacity="0.85"/>
-        <!-- Grandes ailes déployées -->
-        <path d="M50 44 C36 26 18 20 8 32 C16 44 22 56 16 68 C30 62 40 60 50 72 C60 60 70 62 84 68 C78 56 84 44 92 32 C82 20 64 26 50 44 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.4"/>
-        <!-- Plumes intérieures dorées -->
-        <path d="M50 46 C40 34 26 30 18 38 C26 46 32 52 28 60 C38 56 44 56 50 64 C56 56 62 56 72 60 C68 52 74 46 82 38 C74 30 60 34 50 46 Z" fill="${c.accent}" opacity="0.7"/>
-        <!-- Corps et traîne ardente -->
-        <path d="M50 20 L57 38 L54 64 L62 86 L50 76 L38 86 L46 64 L43 38 Z" fill="${strokeLight}"/>
-        <!-- Couronne solaire -->
-        <path d="M46 22 L42 10 L50 16 L50 6 L50 16 L58 10 L54 22 Z" fill="#fef08a"/>
-        <circle cx="47" cy="26" r="1.8" fill="${fillDark}"/>
-        <circle cx="53" cy="26" r="1.8" fill="${fillDark}"/>
-        <circle cx="50" cy="42" r="5" fill="#fff" opacity="0.85"/>`;
+        <!-- Halo solaire -->
+        <circle cx="54" cy="38" r="30" fill="${c.accent}" opacity="0.18"/>
+        <path d="M44 20 C50 10 60 6 70 10 C64 18 62 26 66 34 C56 30 50 30 44 34 C40 30 40 24 44 20 Z" fill="${fillSub}" opacity="0.5"/>
+        <!-- Grande aile déployée : plumes étagées -->
+        <path d="M48 42 C38 24 22 12 8 14 C12 24 12 34 8 46 C16 40 24 42 30 48 C34 42 40 40 48 42 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.3" stroke-linejoin="round"/>
+        <path d="M46 44 C38 32 26 24 14 24 C18 32 18 40 14 48 C22 44 30 46 36 52 C38 48 42 45 46 44 Z" fill="${c.accent}" opacity="0.7"/>
+        <path d="M42 42 L16 20 M40 48 L14 30 M38 54 L16 40" stroke="${strokeLight}" stroke-width="0.9" opacity="0.75"/>
+        <!-- Rémiges primaires de l'aile -->
+        <path d="M8 46 C2 50 0 58 4 62 C8 56 12 52 16 50 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="0.9"/>
+        <path d="M14 48 C8 54 6 62 10 66 C14 60 18 56 22 54 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="0.9"/>
+        <path d="M20 50 C16 58 16 66 20 70 C22 62 26 58 30 56 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="0.9"/>
+        <path d="M26 52 C24 60 24 68 28 72 C30 64 32 60 36 58 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="0.9"/>
+        <path d="M8 14 C2 10 0 16 4 20 M14 24 C8 22 6 28 10 32" fill="none" stroke="${strokeLight}" stroke-width="1.1"/>
+        <!-- Corps et poitrine -->
+        <path d="M46 28 C54 32 60 42 58 54 C56 64 50 72 44 70 C38 66 38 54 40 44 C41 36 43 31 46 28 Z" fill="${strokeLight}" stroke="${c.accent}" stroke-width="1"/>
+        <path d="M44 38 C48 44 50 54 48 64" fill="none" stroke="#fff" stroke-width="1.1" opacity="0.6"/>
+        <!-- Longues plumes de queue -->
+        <path d="M44 64 C36 74 28 84 22 94 C32 86 40 78 46 70" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1"/>
+        <path d="M48 66 C48 78 46 88 44 96 C50 86 52 78 52 68" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1"/>
+        <path d="M52 64 C60 74 66 84 72 92 C64 84 58 76 54 68" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1"/>
+        <!-- Cou et tête -->
+        <path d="M46 28 C48 20 54 14 62 12 C62 20 58 26 52 30 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.1"/>
+        <circle cx="60" cy="16" r="6" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.2"/>
+        <polygon points="64,14 74,17 64,21" fill="#fef08a" stroke="${c.accent}" stroke-width="0.7"/>
+        <circle cx="60" cy="14" r="1.3" fill="${fillDark}"/>
+        <!-- Couronne de flammes -->
+        <path d="M56 10 L52 2 L58 7 L60 0 L62 7 L68 3 L64 11 Z" fill="#fef08a" stroke="${c.accent}" stroke-width="0.7"/>
+        <!-- Cœur incandescent -->
+        <circle cx="50" cy="44" r="4.5" fill="#fff" opacity="0.9"/>
+        <circle cx="50" cy="44" r="9" fill="#fef08a" opacity="0.3"/>
+        <path d="M16 60 L22 54 M84 30 L90 24" stroke="${c.accent}" stroke-width="1.2" stroke-linecap="round" opacity="0.7"/>`;
 
     case 'sword':
       return `
@@ -268,24 +295,30 @@ function renderMotifIllustration(motif, uid, c, variant, card) {
     case 'gear':
       return `
         <!-- Engrenages satellites -->
-        <g opacity="0.75">
-          <circle cx="26" cy="26" r="12" fill="none" stroke="${c.accent}" stroke-width="4" stroke-dasharray="4 3"/>
-          <circle cx="26" cy="26" r="9" fill="${fillDark}" stroke="${strokeLight}" stroke-width="1"/>
-          <circle cx="75" cy="70" r="13" fill="none" stroke="${c.accent}" stroke-width="4" stroke-dasharray="4 3"/>
-          <circle cx="75" cy="70" r="10" fill="${fillDark}" stroke="${strokeLight}" stroke-width="1"/>
+        <g opacity="0.8">
+          <circle cx="24" cy="24" r="12" fill="none" stroke="${c.accent}" stroke-width="4" stroke-dasharray="4 3"/>
+          <circle cx="24" cy="24" r="8.5" fill="${fillDark}" stroke="${strokeLight}" stroke-width="1"/>
+          <circle cx="24" cy="24" r="2.5" fill="${c.accent}"/>
+          <circle cx="77" cy="70" r="13" fill="none" stroke="${c.accent}" stroke-width="4" stroke-dasharray="4 3"/>
+          <circle cx="77" cy="70" r="9.5" fill="${fillDark}" stroke="${strokeLight}" stroke-width="1"/>
+          <circle cx="77" cy="70" r="2.8" fill="${c.accent}"/>
         </g>
         <!-- Couronne dentée principale -->
-        <circle cx="50" cy="48" r="25" fill="none" stroke="${fillMain}" stroke-width="7" stroke-dasharray="6.5 4"/>
-        <circle cx="50" cy="48" r="22" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.5"/>
-        <circle cx="50" cy="48" r="16" fill="${fillDark}" stroke="${c.accent}" stroke-width="1.2"/>
-        <!-- Rayons mécaniques d'horlogerie -->
-        <line x1="50" y1="26" x2="50" y2="70" stroke="${strokeLight}" stroke-width="2.2"/>
-        <line x1="28" y1="48" x2="72" y2="48" stroke="${strokeLight}" stroke-width="2.2"/>
-        <line x1="35" y1="33" x2="65" y2="63" stroke="${c.accent}" stroke-width="1.6"/>
-        <line x1="65" y1="33" x2="35" y2="63" stroke="${c.accent}" stroke-width="1.6"/>
-        <!-- Aiguilles & cœur d'éther -->
-        <circle cx="50" cy="48" r="8" fill="${fillMain}" stroke="#fff" stroke-width="1.2"/>
-        <circle cx="50" cy="48" r="3.5" fill="#fef08a"/>`;
+        <circle cx="50" cy="48" r="26" fill="none" stroke="${fillMain}" stroke-width="7" stroke-dasharray="6.5 4"/>
+        <circle cx="50" cy="48" r="23" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.6"/>
+        <!-- Cadran gravé et pistons -->
+        <circle cx="50" cy="48" r="18" fill="${fillDark}" stroke="${c.accent}" stroke-width="1.3"/>
+        <circle cx="50" cy="48" r="18" fill="none" stroke="${strokeLight}" stroke-width="0.6" stroke-dasharray="1 3"/>
+        <path d="M50 30 L50 66 M32 48 L68 48 M37 35 L63 61 M63 35 L37 61" stroke="${strokeLight}" stroke-width="1.3" opacity="0.55"/>
+        <!-- Iris mécanique central -->
+        <circle cx="50" cy="48" r="10" fill="${fillMain}" stroke="#fff" stroke-width="1.2"/>
+        <ellipse cx="50" cy="48" rx="3" ry="8" fill="#050814"/>
+        <circle cx="53" cy="44" r="2.2" fill="#fff" opacity="0.9"/>
+        <circle cx="50" cy="48" r="13" fill="none" stroke="${c.accent}" stroke-width="0.8" stroke-dasharray="2 2"/>
+        <!-- Rivets et dents -->
+        <circle cx="50" cy="23" r="1.5" fill="#fff"/><circle cx="50" cy="73" r="1.5" fill="#fff"/>
+        <circle cx="25" cy="48" r="1.5" fill="#fff"/><circle cx="75" cy="48" r="1.5" fill="#fff"/>
+        <circle cx="50" cy="48" r="3" fill="#fef08a"/>`;
 
     case 'trident':
       return `
@@ -368,55 +401,93 @@ function renderMotifIllustration(motif, uid, c, variant, card) {
 
     case 'skull':
       return `
-        <!-- Flammes nécromantiques en couronne -->
-        <path d="M24 44 C18 26 28 12 50 10 C72 12 82 26 76 44 C82 32 70 18 50 18 C30 18 18 32 24 44 Z" fill="${c.accent}" opacity="0.65"/>
-        <!-- Faux ou sceptres croisés -->
-        <line x1="16" y1="78" x2="84" y2="18" stroke="${strokeLight}" stroke-width="2" opacity="0.5"/>
-        <line x1="84" y1="78" x2="16" y2="18" stroke="${strokeLight}" stroke-width="2" opacity="0.5"/>
-        <!-- Crâne sculpté -->
-        <path d="M50 16 C30 16 20 28 22 46 C23 55 28 60 33 63 L35 76 L65 76 L67 63 C72 60 77 55 78 46 C80 28 70 16 50 16 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.6"/>
-        <!-- Pommettes et sutures -->
-        <path d="M26 48 C32 54 38 54 42 50 M74 48 C68 54 62 54 58 50" fill="none" stroke="${fillDark}" stroke-width="1.5"/>
-        <!-- Rune frontale -->
+        <!-- Aura nécromantique et flammes noires -->
+        <circle cx="50" cy="48" r="30" fill="${c.accent}" opacity="0.12"/>
+        <path d="M24 22 C18 10 24 2 32 6 C28 12 28 18 30 24 Z M76 22 C82 10 76 2 68 6 C72 12 72 18 70 24 Z" fill="${c.accent}" opacity="0.55"/>
+        <!-- Faux croisés -->
+        <line x1="14" y1="82" x2="86" y2="14" stroke="${strokeLight}" stroke-width="1.8" opacity="0.4"/>
+        <line x1="86" y1="82" x2="14" y2="14" stroke="${strokeLight}" stroke-width="1.8" opacity="0.4"/>
+        <!-- Capuche de liche -->
+        <path d="M50 8 C28 12 18 30 20 50 C22 66 32 78 40 84 L50 90 L60 84 C68 78 78 66 80 50 C82 30 72 12 50 8 Z" fill="${fillDark}" stroke="${strokeLight}" stroke-width="1.4"/>
+        <path d="M50 14 C32 18 24 34 26 50 C28 62 36 72 44 78 L50 84 L56 78 C64 72 72 62 74 50 C76 34 68 18 50 14 Z" fill="${fillBone}" stroke="${strokeLight}" stroke-width="1.2"/>
+        <!-- Orbites angulaires et lueur d'âme -->
+        <path d="M32 40 L44 36 L48 46 L38 52 L30 48 Z" fill="#05070e" stroke="${strokeLight}" stroke-width="0.8"/>
+        <path d="M68 40 L56 36 L52 46 L62 52 L70 48 Z" fill="#05070e" stroke="${strokeLight}" stroke-width="0.8"/>
+        <circle cx="39" cy="44" r="2.6" fill="${eyeColor}"/>
+        <circle cx="61" cy="44" r="2.6" fill="${eyeColor}"/>
+        <circle cx="39" cy="44" r="1" fill="#fff"/>
+        <circle cx="61" cy="44" r="1" fill="#fff"/>
+        <!-- Cavité nasale, pommettes et mâchoire -->
+        <polygon points="50,49 46,59 54,59" fill="#05070e"/>
+        <path d="M30 58 Q38 64 46 60 M70 58 Q62 64 54 60" fill="none" stroke="${fillDark}" stroke-width="1.5"/>
+        <path d="M38 70 L62 70 L58 82 L42 82 Z" fill="${fillBone}" stroke="${strokeLight}" stroke-width="1"/>
+        <line x1="43" y1="70" x2="43" y2="81" stroke="#05070e" stroke-width="1.6"/>
+        <line x1="50" y1="70" x2="50" y2="81" stroke="#05070e" stroke-width="1.6"/>
+        <line x1="57" y1="70" x2="57" y2="81" stroke="#05070e" stroke-width="1.6"/>
+        <!-- Fêlures et rune frontale -->
+        <path d="M50 16 L46 26 L50 32 L48 38 M30 30 L36 36 M70 32 L64 38" fill="none" stroke="${c.accent}" stroke-width="1" opacity="0.8"/>
         <polygon points="50,22 54,30 50,36 46,30" fill="${c.accent}"/>
-        <!-- Orbites profondes et lueur d'âme -->
-        <ellipse cx="38" cy="44" rx="7.5" ry="6.5" fill="#070a14" stroke="${strokeLight}" stroke-width="0.9"/>
-        <ellipse cx="62" cy="44" rx="7.5" ry="6.5" fill="#070a14" stroke="${strokeLight}" stroke-width="0.9"/>
-        <circle cx="38" cy="44" r="2.6" fill="${eyeColor}"/>
-        <circle cx="62" cy="44" r="2.6" fill="${eyeColor}"/>
-        <!-- Cavité nasale & dents ciselées -->
-        <polygon points="50,49 45,59 55,59" fill="#070a14"/>
-        <line x1="41" y1="66" x2="41" y2="75" stroke="#070a14" stroke-width="2"/>
-        <line x1="47" y1="66" x2="47" y2="75" stroke="#070a14" stroke-width="2"/>
-        <line x1="53" y1="66" x2="53" y2="75" stroke="#070a14" stroke-width="2"/>
-        <line x1="59" y1="66" x2="59" y2="75" stroke="#070a14" stroke-width="2"/>`;
+        <!-- Éclats d'âme -->
+        <circle cx="24" cy="34" r="1.8" fill="${c.accent}"/><circle cx="78" cy="58" r="1.5" fill="${c.accent}"/>
+        <circle cx="30" cy="74" r="1.3" fill="#fff" opacity="0.8"/>`;
 
     case 'wing':
       return `
-        <!-- Seconde aile en arrière-plan -->
-        <path d="M28 72 C24 44 46 20 86 14 C72 28 68 38 82 40 C64 46 60 54 72 58 C54 62 42 68 28 72 Z" fill="${fillSub}" opacity="0.6"/>
-        <!-- Grande aile céleste à plumes étagées -->
-        <path d="M14 76 C16 42 40 18 84 12 C68 26 64 38 80 40 C60 46 56 56 70 60 C50 64 36 72 14 76 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.5"/>
-        <!-- Rémiges intérieures lumineuses -->
-        <path d="M22 68 C28 46 46 28 74 22 C60 32 56 42 68 44 C52 48 48 56 58 60 C42 62 32 66 22 68 Z" fill="${strokeLight}" opacity="0.45"/>
-        <path d="M20 72 Q40 44 76 18 M28 70 Q46 50 70 40 M34 68 Q48 58 64 58" fill="none" stroke="#fff" stroke-width="1.1" opacity="0.7"/>
-        <!-- Gemme d'épaule -->
-        <circle cx="24" cy="66" r="5" fill="${c.accent}" stroke="#fff" stroke-width="1.2"/>`;
+        <!-- Aile arrière en ombre -->
+        <path d="M28 76 C24 48 48 22 90 12 C74 28 70 40 86 44 C68 50 62 58 76 62 C56 66 42 72 28 76 Z" fill="${fillSub}" opacity="0.45"/>
+        <!-- Aile céleste festonnée : silhouette continue -->
+        <path d="M14 80 C18 48 40 24 86 14 C74 28 70 40 84 44 C70 50 66 58 78 60 C64 64 58 70 66 72 C54 74 46 78 40 84 C36 80 30 78 24 80 C20 82 16 82 14 80 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.5" stroke-linejoin="round"/>
+        <!-- Lobes de plumes secondaires -->
+        <path d="M24 78 C30 64 42 50 58 40 C50 48 48 56 58 58 C46 62 38 68 32 76 Z" fill="${c.accent}" opacity="0.45"/>
+        <path d="M40 82 C46 72 54 64 66 58 C60 64 60 70 68 72 C58 74 50 78 44 84 Z" fill="${c.accent}" opacity="0.35"/>
+        <!-- Divisions des rémiges -->
+        <path d="M20 78 Q36 56 64 34 M28 80 Q44 62 70 44 M38 84 Q50 70 76 58 M48 84 Q56 74 82 64" fill="none" stroke="${strokeLight}" stroke-width="1" opacity="0.75"/>
+        <!-- Couverture de plumes -->
+        <path d="M22 74 C28 54 44 38 68 28 C58 38 56 46 66 48 C54 52 46 60 56 62 C44 64 32 68 22 74 Z" fill="${strokeLight}" opacity="0.3"/>
+        <!-- Gemme d'épaule et petites plumes flottantes -->
+        <circle cx="20" cy="74" r="5.5" fill="${c.accent}" stroke="#fff" stroke-width="1.2"/>
+        <circle cx="20" cy="74" r="2" fill="#fef08a"/>
+        <path d="M12 32 C8 26 10 18 15 14 C16 22 18 27 23 31 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="0.9"/>
+        <path d="M84 50 C90 48 94 52 96 58 C90 58 86 56 82 54 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="0.8" opacity="0.8"/>
+        <path d="M10 42 L14 34 M88 30 L94 24" stroke="${c.accent}" stroke-width="1.2" stroke-linecap="round" opacity="0.7"/>`;
 
     case 'serpent':
       return `
-        <!-- Anneaux arrière -->
-        <path d="M20 72 C8 56 26 42 48 44 C70 46 88 34 74 18" fill="none" stroke="${fillSub}" stroke-width="10" stroke-linecap="round"/>
-        <!-- Corps principal écaillé -->
-        <path d="M24 78 C10 62 30 48 52 50 C74 52 88 36 70 20 C58 10 38 14 36 28" fill="none" stroke="${fillMain}" stroke-width="8.5" stroke-linecap="round"/>
-        <path d="M24 78 C10 62 30 48 52 50 C74 52 88 36 70 20 C58 10 38 14 36 28" fill="none" stroke="${strokeLight}" stroke-width="2" stroke-dasharray="3 4" stroke-linecap="round"/>
-        <!-- Coiffe / Crête de Léviathan -->
-        <path d="M26 20 C24 30 30 38 38 36 C46 38 54 30 50 20 C44 12 32 12 26 20 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.2"/>
-        <!-- Tête de serpent & crocs -->
-        <path d="M30 22 L46 22 L42 36 L34 36 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.2"/>
-        <circle cx="35" cy="27" r="1.8" fill="${eyeColor}"/><circle cx="41" cy="27" r="1.8" fill="${eyeColor}"/>
-        <!-- Langue fourchue -->
-        <path d="M38 36 L38 44 L34 48 M38 44 L42 48" fill="none" stroke="#f87171" stroke-width="1.4" stroke-linecap="round"/>`;
+        <!-- Halo de venin -->
+        <ellipse cx="50" cy="50" rx="28" ry="34" fill="${c.accent}" opacity="0.14"/>
+        <!-- Anneaux arrière du corps -->
+        <path d="M22 74 C8 58 26 44 48 46 C70 48 88 36 74 20" fill="none" stroke="${fillSub}" stroke-width="11" stroke-linecap="round"/>
+        <!-- Corps principal en S, écailles et reflets -->
+        <path d="M26 80 C10 64 30 50 52 52 C74 54 88 38 70 22 C58 12 38 16 36 30" fill="none" stroke="${fillMain}" stroke-width="8.5" stroke-linecap="round"/>
+        <path d="M26 80 C10 64 30 50 52 52 C74 54 88 38 70 22" fill="none" stroke="${fillDark}" stroke-width="2.2" stroke-linecap="round" opacity="0.35" transform="translate(0,3)"/>
+        <path d="M26 80 C10 64 30 50 52 52 C74 54 88 38 70 22" fill="none" stroke="${strokeLight}" stroke-width="1.8" stroke-dasharray="2.5 3.5" stroke-linecap="round"/>
+        <!-- Écailles ventrales lumineuses -->
+        <g fill="${strokeLight}" opacity="0.6">
+          <ellipse cx="20" cy="72" rx="2" ry="1.2" transform="rotate(-40 20 72)"/>
+          <ellipse cx="26" cy="64" rx="2" ry="1.2" transform="rotate(-20 26 64)"/>
+          <ellipse cx="35" cy="58" rx="2" ry="1.2" transform="rotate(-8 35 58)"/>
+          <ellipse cx="45" cy="54" rx="2" ry="1.2"/>
+          <ellipse cx="56" cy="52" rx="2" ry="1.2" transform="rotate(8 56 52)"/>
+          <ellipse cx="66" cy="48" rx="2" ry="1.2" transform="rotate(20 66 48)"/>
+          <ellipse cx="74" cy="42" rx="2" ry="1.2" transform="rotate(35 74 42)"/>
+          <ellipse cx="78" cy="34" rx="2" ry="1.2" transform="rotate(55 78 34)"/>
+          <ellipse cx="76" cy="26" rx="2" ry="1.2" transform="rotate(70 76 26)"/>
+        </g>
+        <!-- Écailles dorsales -->
+        <path d="M20 72 L16 66 L22 64 M30 60 L26 54 L32 54 M44 52 L42 46 L48 46 M60 50 L60 44 L66 46 M74 42 L76 36 L82 40 M78 28 L82 22 L88 28" fill="${c.accent}" stroke="${strokeLight}" stroke-width="0.7"/>
+        <!-- Capuche de cobra et tête -->
+        <path d="M26 22 C24 10 40 4 50 10 C60 4 76 10 74 22 C70 34 56 38 50 34 C44 38 30 34 26 22 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.4"/>
+        <path d="M34 20 C38 12 46 10 50 14 C54 10 62 12 66 20 C62 28 56 30 50 28 C44 30 38 28 34 20 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1"/>
+        <!-- Yeux hypnotiques et langue fourchue -->
+        <ellipse cx="42" cy="19" rx="2.4" ry="3.2" fill="${eyeColor}"/>
+        <ellipse cx="58" cy="19" rx="2.4" ry="3.2" fill="${eyeColor}"/>
+        <ellipse cx="42" cy="19" rx="0.9" ry="2.4" fill="${fillDark}"/>
+        <ellipse cx="58" cy="19" rx="0.9" ry="2.4" fill="${fillDark}"/>
+        <path d="M50 28 L50 38 L45 44 M50 38 L55 44" fill="none" stroke="#f87171" stroke-width="1.6" stroke-linecap="round"/>
+        <circle cx="50" cy="12" r="2.5" fill="#fef08a"/>
+        <!-- Crochets et reflets -->
+        <path d="M46 28 L46 33 L48 29 M54 28 L54 33 L52 29" fill="#fff"/>
+        <circle cx="70" cy="20" r="1.6" fill="#fff" opacity="0.8"/>`;
 
     case 'bolt':
       return `
@@ -514,37 +585,50 @@ function renderMotifIllustration(motif, uid, c, variant, card) {
 
     case 'horns':
       return `
-        <!-- Aura bestiale -->
-        <circle cx="50" cy="46" r="24" fill="${c.accent}" opacity="0.22"/>
-        <!-- Grandes cornes de Béhémoth / Taureau striées -->
-        <path d="M40 42 C24 38 14 24 16 10 C8 24 10 46 28 56 C34 60 40 54 40 42 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.5"/>
-        <path d="M60 42 C76 38 86 24 84 10 C92 24 90 46 72 56 C66 60 60 54 60 42 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.5"/>
-        <!-- Anneaux de cornes -->
-        <path d="M16 24 Q22 26 24 32 M20 36 Q28 38 30 44 M84 24 Q78 26 76 32 M80 36 Q72 38 70 44" fill="none" stroke="${fillDark}" stroke-width="1.6"/>
-        <!-- Front cuirassé et mufle -->
-        <path d="M34 36 L50 28 L66 36 L62 62 L50 78 L38 62 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.5"/>
-        <polygon points="50,32 56,44 50,56 44,44" fill="${c.accent}" opacity="0.8"/>
-        <!-- Yeux furieux & anneau d'airain -->
-        <polygon points="39,48 46,51 41,54" fill="${eyeColor}"/>
-        <polygon points="61,48 54,51 59,54" fill="${eyeColor}"/>
-        <circle cx="50" cy="78" r="6" fill="none" stroke="#fef08a" stroke-width="2.5"/>`;
+        <!-- Aura bestiale et poussière -->
+        <circle cx="50" cy="46" r="27" fill="${c.accent}" opacity="0.16"/>
+        <circle cx="18" cy="70" r="2" fill="${c.accent}" opacity="0.6"/><circle cx="82" cy="72" r="1.6" fill="${c.accent}" opacity="0.6"/>
+        <!-- Cornes courbes et effilées -->
+        <path d="M38 30 C26 28 14 20 10 8 C6 22 14 38 28 44 C34 46 38 42 38 36 Z" fill="${c.accent}" stroke="${strokeLight}" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M62 30 C74 28 86 20 90 8 C94 22 86 38 72 44 C66 46 62 42 62 36 Z" fill="${c.accent}" stroke="${strokeLight}" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M16 18 Q24 22 28 30 M20 30 Q28 34 32 40 M84 18 Q76 22 72 30 M80 30 Q72 34 68 40" fill="none" stroke="${fillDark}" stroke-width="1.4"/>
+        <!-- Tête massive de taureau -->
+        <path d="M50 22 C38 22 30 30 30 42 L32 56 C34 66 42 72 50 78 C58 72 66 66 68 56 L70 42 C70 30 62 22 50 22 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.6"/>
+        <!-- Museau clair et naseaux -->
+        <path d="M50 44 C42 44 36 52 38 60 L50 70 L62 60 C64 52 58 44 50 44 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.1"/>
+        <ellipse cx="44" cy="58" rx="1.6" ry="2.4" fill="${fillDark}"/>
+        <ellipse cx="56" cy="58" rx="1.6" ry="2.4" fill="${fillDark}"/>
+        <!-- Rune frontale et yeux furieux -->
+        <polygon points="50,27 55,36 50,45 45,36" fill="${c.accent}" opacity="0.9"/>
+        <polygon points="34,40 44,43 36,46" fill="${eyeColor}"/>
+        <polygon points="66,40 56,43 64,46" fill="${eyeColor}"/>
+        <!-- Anneau nasal d'or -->
+        <circle cx="50" cy="66" r="5" fill="none" stroke="#fef08a" stroke-width="2"/>
+        <!-- Crinière et touffes -->
+        <path d="M28 50 L22 58 L30 58 M72 50 L78 58 L70 58 M34 72 L28 82 L38 78 M66 72 L72 82 L62 78" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1" opacity="0.85"/>`;
 
     case 'diamond':
       return `
         <!-- Éclats cristallins périphériques -->
-        <polygon points="18,28 26,20 28,32 20,36" fill="${fillMain}" stroke="${strokeLight}" stroke-width="0.9"/>
-        <polygon points="82,28 74,20 72,32 80,36" fill="${fillMain}" stroke="${strokeLight}" stroke-width="0.9"/>
-        <polygon points="18,66 26,58 28,70 20,74" fill="${fillSub}" stroke="${strokeLight}" stroke-width="0.9"/>
-        <polygon points="82,66 74,58 72,70 80,74" fill="${fillSub}" stroke="${strokeLight}" stroke-width="0.9"/>
-        <!-- Grand joyau / cristal d'obsidienne taillé en facettes -->
-        <polygon points="50,10 80,46 50,82 20,46" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.8"/>
+        <polygon points="16,30 24,18 29,31 21,38" fill="${fillMain}" stroke="${strokeLight}" stroke-width="0.9"/>
+        <polygon points="84,30 76,18 71,31 79,38" fill="${fillMain}" stroke="${strokeLight}" stroke-width="0.9"/>
+        <polygon points="16,64 25,54 29,68 20,76" fill="${fillSub}" stroke="${strokeLight}" stroke-width="0.9"/>
+        <polygon points="84,64 75,54 71,68 80,76" fill="${fillSub}" stroke="${strokeLight}" stroke-width="0.9"/>
+        <polygon points="50,4 56,14 50,24 44,14" fill="${fillSub}" stroke="${strokeLight}" stroke-width="0.8" opacity="0.8"/>
+        <!-- Grand cristal d'obsidienne taillé -->
+        <polygon points="50,10 80,46 50,84 20,46" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.8"/>
         <!-- Facettes géométriques internes -->
-        <polygon points="50,10 66,34 50,26 34,34" fill="#fff" opacity="0.45"/>
+        <polygon points="50,10 66,34 50,26 34,34" fill="#fff" opacity="0.5"/>
         <polygon points="20,46 34,34 34,58" fill="#fff" opacity="0.25"/>
-        <polygon points="80,46 66,34 66,58" fill="${fillDark}" opacity="0.35"/>
-        <polygon points="50,82 66,58 50,66 34,58" fill="${fillDark}" opacity="0.45"/>
+        <polygon points="80,46 66,34 66,58" fill="${fillDark}" opacity="0.38"/>
+        <polygon points="50,84 66,58 50,66 34,58" fill="${fillDark}" opacity="0.48"/>
         <polygon points="50,26 66,34 66,58 50,66 34,58 34,34" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.1"/>
-        <polygon points="50,34 59,46 50,58 41,46" fill="#fef08a" opacity="0.85"/>`;
+        <!-- Fêlures lumineuses et rune centrale -->
+        <path d="M50 30 L46 42 L52 50 L47 62 L50 72 M34 40 L42 44 M66 44 L58 50" fill="none" stroke="#fff" stroke-width="1" opacity="0.65"/>
+        <polygon points="50,36 58,46 50,56 42,46" fill="#fef08a" opacity="0.9"/>
+        <circle cx="50" cy="46" r="2.5" fill="#fff"/>
+        <!-- Éclats de lumière -->
+        <path d="M14 46 L8 46 M86 46 L92 46 M50 90 L50 96" stroke="${strokeLight}" stroke-width="1.2" opacity="0.8"/>`;
 
     case 'wave':
       return `
@@ -604,17 +688,31 @@ function renderMotifIllustration(motif, uid, c, variant, card) {
 
     case 'fang':
       return `
-        <!-- Silhouette de gueule de loup/molosse -->
-        <path d="M18 24 L32 12 L42 22 L50 18 L58 22 L68 12 L82 24 L76 58 L50 82 L24 58 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.3"/>
-        <!-- Yeux de prédateur -->
-        <polygon points="30,30 42,35 32,38" fill="${eyeColor}"/>
-        <polygon points="70,30 58,35 68,38" fill="${eyeColor}"/>
-        <!-- Crocs supérieurs et inférieurs acérés -->
-        <polygon points="26,44 36,72 42,50" fill="#fff" stroke="${fillDark}" stroke-width="1"/>
-        <polygon points="74,44 64,72 58,50" fill="#fff" stroke="${fillDark}" stroke-width="1"/>
-        <polygon points="42,50 47,64 50,52 53,64 58,50" fill="${strokeLight}"/>
-        <!-- Griffures lumineuses -->
-        <path d="M22 68 L38 82 M50 68 L50 86 M78 68 L62 82" stroke="${c.accent}" stroke-width="2" stroke-linecap="round"/>`;
+        <!-- Halo lunaire de traqueur -->
+        <circle cx="58" cy="30" r="24" fill="${c.accent}" opacity="0.14"/>
+        <circle cx="58" cy="30" r="16" fill="none" stroke="${strokeLight}" stroke-width="0.8" opacity="0.4"/>
+        <!-- Oreilles dressées -->
+        <path d="M54 26 L50 6 L64 20 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.3"/>
+        <path d="M64 20 L70 7 L74 24 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.3"/>
+        <path d="M55 22 L53 12 L60 19 Z M66 20 L69 12 L71 21 Z" fill="${c.accent}" opacity="0.7"/>
+        <!-- Tête de loup de profil, museau allongé -->
+        <path d="M78 88 C72 66 66 48 58 34 C52 24 42 18 34 20 L18 28 L6 40 L20 44 L18 52 L30 54 L34 64 C42 76 54 84 66 88 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.6" stroke-linejoin="round"/>
+        <!-- Museau, nez et gueule -->
+        <path d="M34 20 C28 24 22 30 18 36 L6 42 L20 44 L30 40 C36 36 40 30 40 26 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.1"/>
+        <ellipse cx="9" cy="41" rx="2.6" ry="2" fill="${fillDark}"/>
+        <path d="M8 45 C16 51 24 55 32 55 C38 55 42 51 44 47" fill="none" stroke="${fillDark}" stroke-width="1.4"/>
+        <!-- Crocs acérés -->
+        <path d="M19 47 L17 60 L25 50 Z M27 51 L26 62 L33 53 Z" fill="#fff" stroke="${fillDark}" stroke-width="0.7"/>
+        <!-- Œil de braise et arcade -->
+        <polygon points="35,31 46,34 37,37" fill="${eyeColor}"/>
+        <path d="M33 28 L48 31" stroke="${fillDark}" stroke-width="1.4"/>
+        <!-- Fourrure, crinière et reflets -->
+        <path d="M54 30 L50 24 L57 26 L54 19 M58 62 L50 68 L52 60 M66 46 L74 42 L69 50" fill="none" stroke="${c.accent}" stroke-width="1.3"/>
+        <path d="M40 24 C46 20 52 21 56 26 M42 29 C47 26 52 26 55 29" fill="none" stroke="${fillDark}" stroke-width="0.9" opacity="0.6"/>
+        <path d="M30 58 L28 66 M36 60 L35 68 M42 61 L42 69" stroke="${fillDark}" stroke-width="0.8" opacity="0.5"/>
+        <!-- Griffures et éclats -->
+        <path d="M16 70 L28 84 M50 76 L50 90 M86 66 L74 80" stroke="${c.accent}" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="80" cy="26" r="1.8" fill="#fff"/><circle cx="20" cy="26" r="1.4" fill="#fff"/>`;
 
     case 'leaf':
       return `
@@ -632,15 +730,27 @@ function renderMotifIllustration(motif, uid, c, variant, card) {
 
     case 'jelly':
       return `
-        <!-- Halo bioluminescent -->
-        <ellipse cx="50" cy="36" rx="30" ry="20" fill="${c.accent}" opacity="0.22"/>
-        <!-- Filaments et tentacules gracieux -->
-        <path d="M30 46 C24 60 34 72 26 86 M40 48 C36 64 44 74 38 88 M50 48 C50 64 48 76 52 88 M60 48 C64 64 56 74 62 88 M70 46 C76 60 66 72 74 86" fill="none" stroke="${strokeLight}" stroke-width="2.2" stroke-linecap="round"/>
+        <!-- Halo bioluminescent et ondes -->
+        <ellipse cx="50" cy="36" rx="32" ry="22" fill="${c.accent}" opacity="0.18"/>
+        <circle cx="50" cy="38" r="28" fill="none" stroke="${strokeLight}" stroke-width="0.8" stroke-dasharray="2 4" opacity="0.5"/>
+        <!-- Longs tentacules ondulants -->
+        <path d="M26 48 C20 60 28 70 20 82 M34 50 C30 64 38 74 32 88 M42 50 C40 66 46 76 42 90 M50 50 C50 66 48 78 52 92 M58 50 C60 66 54 76 60 90 M66 50 C70 64 62 74 70 88 M74 48 C80 60 72 70 80 82" fill="none" stroke="${strokeLight}" stroke-width="1.8" stroke-linecap="round" opacity="0.85"/>
+        <!-- Bras oraux translucides -->
+        <path d="M40 50 C34 58 38 66 32 72 M46 50 C44 60 48 68 44 76 M54 50 C56 60 52 68 56 76 M60 50 C66 58 62 66 68 72" fill="none" stroke="${c.accent}" stroke-width="2.6" stroke-linecap="round" opacity="0.6"/>
         <!-- Ombrelle translucide à côtes lumineuses -->
         <path d="M20 46 C18 22 34 12 50 12 C66 12 82 22 80 46 C70 50 60 44 50 48 C40 44 30 50 20 46 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.5"/>
-        <path d="M50 12 C38 22 34 34 36 46 M50 12 C62 22 66 34 64 46 M50 12 L50 48" fill="none" stroke="#fff" stroke-width="1.1" opacity="0.65"/>
-        <!-- Noyau lumineux -->
-        <ellipse cx="50" cy="32" rx="9" ry="6" fill="#fef08a" opacity="0.8"/>`;
+        <path d="M22 44 C24 26 36 16 50 16 C64 16 76 26 78 44 C68 47 60 42 50 45 C40 42 32 47 22 44 Z" fill="#fff" opacity="0.16"/>
+        <path d="M50 12 C38 22 34 34 36 46 M50 12 C62 22 66 34 64 46 M50 12 L50 48 M30 16 C30 28 28 38 30 46 M70 16 C70 28 72 38 70 46" fill="none" stroke="#fff" stroke-width="1" opacity="0.6"/>
+        <!-- Bordure festonnée -->
+        <path d="M20 46 C30 51 40 43 50 48 C60 43 70 51 80 46" fill="none" stroke="${strokeLight}" stroke-width="1.4"/>
+        <!-- Noyau lumineux et bioluminescence -->
+        <ellipse cx="50" cy="30" rx="9" ry="6" fill="#fef08a" opacity="0.75"/>
+        <ellipse cx="50" cy="30" rx="4" ry="2.5" fill="#fff" opacity="0.9"/>
+        <circle cx="34" cy="32" r="2" fill="#fff" opacity="0.8"/>
+        <circle cx="66" cy="34" r="1.6" fill="#fff" opacity="0.8"/>
+        <circle cx="42" cy="22" r="1.4" fill="#fef08a"/>
+        <circle cx="58" cy="20" r="1.2" fill="#fef08a"/>
+        <circle cx="26" cy="58" r="1.5" fill="${c.accent}"/><circle cx="74" cy="60" r="1.3" fill="${c.accent}"/>`;
 
     case 'shell':
       return `
@@ -656,26 +766,45 @@ function renderMotifIllustration(motif, uid, c, variant, card) {
 
     case 'crest':
       return `
-        <!-- Ailes héraldiques -->
-        <path d="M12 32 L36 38 L24 58 L10 48 Z M88 32 L64 38 L76 58 L90 48 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.1"/>
-        <!-- Grand blason étoilé de commandement -->
-        <polygon points="50,10 63,34 88,30 70,52 78,80 50,66 22,80 30,52 12,30 37,34" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.5" stroke-linejoin="round"/>
-        <!-- Médaillon intérieur -->
-        <polygon points="50,22 59,39 76,37 64,51 68,68 50,59 32,68 36,51 24,37 41,39" fill="${fillDark}" opacity="0.45"/>
-        <circle cx="50" cy="46" r="8" fill="#fef08a" stroke="${strokeLight}" stroke-width="1.2"/>
-        <polygon points="50,39 53,46 50,53 47,46" fill="#fff"/>`;
+        <!-- Grande aile héraldique gauche -->
+        <path d="M10 30 C22 22 34 26 40 36 C34 40 30 46 30 54 C22 50 14 42 10 30 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.1"/>
+        <path d="M90 30 C78 22 66 26 60 36 C66 40 70 46 70 54 C78 50 86 42 90 30 Z" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.1"/>
+        <path d="M14 32 L30 36 M16 40 L30 44 M86 32 L70 36 M84 40 L70 44" stroke="${strokeLight}" stroke-width="0.8" opacity="0.7"/>
+        <!-- Épées croisées derrière le blason -->
+        <path d="M20 84 L80 16 M80 84 L20 16" stroke="${c.accent}" stroke-width="2.4" opacity="0.55" stroke-linecap="round"/>
+        <!-- Blason étoilé de commandement -->
+        <polygon points="50,10 63,34 88,30 70,52 78,80 50,66 22,80 30,52 12,30 37,34" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.6" stroke-linejoin="round"/>
+        <polygon points="50,22 59,39 76,37 64,51 68,68 50,59 32,68 36,51 24,37 41,39" fill="${fillDark}" opacity="0.42"/>
+        <!-- Médaillon et joyau de commandement -->
+        <circle cx="50" cy="46" r="9" fill="${fillSub}" stroke="${strokeLight}" stroke-width="1.2"/>
+        <polygon points="50,38 54,46 50,54 46,46" fill="#fef08a"/>
+        <circle cx="50" cy="46" r="2.5" fill="#fff"/>
+        <circle cx="50" cy="10" r="2.5" fill="#fef08a"/>
+        <circle cx="12" cy="30" r="2" fill="${strokeLight}"/><circle cx="88" cy="30" r="2" fill="${strokeLight}"/>`;
 
     case 'cross':
       return `
-        <!-- Halo octogonal -->
-        <polygon points="36,14 64,14 86,36 86,64 64,86 36,86 14,64 14,36" fill="none" stroke="${c.accent}" stroke-width="1" opacity="0.5"/>
-        <!-- Grande croix templière / séraphique pattée -->
-        <path d="M38 12 L62 12 L56 38 L84 32 L84 60 L56 54 L62 84 L38 84 L44 54 L16 60 L16 32 L44 38 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.5" stroke-linejoin="round"/>
-        <!-- Croisillon d'or interne -->
-        <line x1="50" y1="18" x2="50" y2="78" stroke="#fef08a" stroke-width="2"/>
-        <line x1="22" y1="46" x2="78" y2="46" stroke="#fef08a" stroke-width="2"/>
-        <!-- Cœur de diamant -->
-        <polygon points="50,36 60,46 50,56 40,46" fill="#fff" stroke="${fillDark}" stroke-width="1.2"/>`;
+        <!-- Halo octogonal et rayons -->
+        <polygon points="36,12 64,12 88,36 88,64 64,88 36,88 12,64 12,36" fill="none" stroke="${c.accent}" stroke-width="1" opacity="0.55"/>
+        <path d="M50 2 L50 12 M50 88 L50 98 M2 50 L12 50 M88 50 L98 50" stroke="${c.accent}" stroke-width="1.2" opacity="0.6"/>
+        <!-- Six ailes séraphiques derrière la croix -->
+        <g fill="${fillSub}" stroke="${strokeLight}" stroke-width="1" opacity="0.8">
+          <path d="M44 36 C32 22 18 16 8 20 C14 30 16 40 12 50 C22 44 30 44 36 50 C40 44 42 40 44 36 Z"/>
+          <path d="M56 36 C68 22 82 16 92 20 C86 30 84 40 88 50 C78 44 70 44 64 50 C60 44 58 40 56 36 Z"/>
+          <path d="M44 56 C34 66 20 70 10 66 C16 58 18 50 14 42 C24 48 32 48 38 44 C40 50 42 54 44 56 Z" opacity="0.6"/>
+          <path d="M56 56 C66 66 80 70 90 66 C84 58 82 50 86 42 C76 48 68 48 62 44 C60 50 58 54 56 56 Z" opacity="0.6"/>
+        </g>
+        <!-- Croix pattée d'orfèvrerie -->
+        <path d="M38 12 L62 12 L56 38 L84 32 L84 60 L56 54 L62 84 L38 84 L44 54 L16 60 L16 32 L44 38 Z" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.6" stroke-linejoin="round"/>
+        <!-- Filets d'or et cœur de diamant -->
+        <line x1="50" y1="18" x2="50" y2="78" stroke="#fef08a" stroke-width="1.6" opacity="0.9"/>
+        <line x1="22" y1="46" x2="78" y2="46" stroke="#fef08a" stroke-width="1.6" opacity="0.9"/>
+        <polygon points="50,34 62,46 50,58 38,46" fill="${fillDark}" stroke="${strokeLight}" stroke-width="1.2"/>
+        <polygon points="50,38 57,46 50,54 43,46" fill="#fff" opacity="0.9"/>
+        <circle cx="50" cy="46" r="2.5" fill="#fef08a"/>
+        <!-- Larmes de lumière -->
+        <circle cx="30" cy="22" r="1.5" fill="#fff"/><circle cx="70" cy="22" r="1.5" fill="#fff"/>
+        <circle cx="30" cy="70" r="1.5" fill="#fff"/><circle cx="70" cy="70" r="1.5" fill="#fff"/>`;
 
     case 'spore':
       return `
@@ -697,27 +826,40 @@ function renderMotifIllustration(motif, uid, c, variant, card) {
 
     case 'spark':
       return `
-        <!-- Ondes de résonance -->
-        <circle cx="50" cy="46" r="22" fill="none" stroke="${strokeLight}" stroke-width="1.2" opacity="0.65"/>
-        <circle cx="50" cy="46" r="14" fill="${c.accent}" opacity="0.35"/>
-        <!-- Étoile à 8 branches effilées -->
-        <polygon points="50,18 55,39 76,22 59,43 82,46 59,49 76,70 55,53 50,74 45,53 24,70 41,49 18,46 41,43 24,22 45,39" fill="${fillSub}" opacity="0.85"/>
-        <polygon points="50,8 57,39 88,46 57,53 50,84 43,53 12,46 43,39" fill="${fillMain}" stroke="#fff" stroke-width="1.3"/>
-        <circle cx="50" cy="46" r="7" fill="#fff"/>
-        <circle cx="50" cy="46" r="3.5" fill="#fef08a"/>`;
+        <!-- Ondes de résonance et éclats -->
+        <circle cx="50" cy="46" r="26" fill="none" stroke="${strokeLight}" stroke-width="1" opacity="0.5"/>
+        <circle cx="50" cy="46" r="17" fill="${c.accent}" opacity="0.25"/>
+        <path d="M50 6 L50 16 M50 76 L50 86 M10 46 L20 46 M80 46 L90 46 M22 18 L29 25 M78 18 L71 25 M22 74 L29 67 M78 74 L71 67" stroke="#fef08a" stroke-width="1.6" stroke-linecap="round"/>
+        <!-- Étoile à 4 branches effilées, facettée -->
+        <polygon points="50,10 58,38 86,46 58,54 50,82 42,54 14,46 42,38" fill="${fillMain}" stroke="#fff" stroke-width="1.3"/>
+        <polygon points="50,10 50,46 42,38" fill="#fff" opacity="0.45"/>
+        <polygon points="86,46 50,46 58,38" fill="#fff" opacity="0.35"/>
+        <polygon points="14,46 50,46 42,54" fill="#fff" opacity="0.3"/>
+        <!-- Cœur incandescent -->
+        <circle cx="50" cy="46" r="8" fill="#fff"/>
+        <circle cx="50" cy="46" r="4" fill="#fef08a"/>
+        <circle cx="34" cy="26" r="1.8" fill="#fff"/><circle cx="68" cy="30" r="1.4" fill="#fff"/>
+        <circle cx="28" cy="62" r="1.5" fill="#fff"/><circle cx="72" cy="66" r="1.8" fill="#fff"/>`;
 
     case 'star':
     default:
       return `
-        <!-- Couronne stellaire à 10 pointes -->
-        <polygon points="50,10 58,32 82,24 66,44 86,60 62,58 64,82 50,64 36,82 38,58 14,60 34,44 18,24 42,32" fill="${fillSub}" opacity="0.7"/>
-        <!-- Grande étoile astrale biseautée -->
-        <polygon points="50,10 60,35 87,35 65,51 73,78 50,62 27,78 35,51 13,35 40,35" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.5" stroke-linejoin="round"/>
-        <!-- Facettes intérieures donnant l'effet d'un joyau céleste -->
-        <polygon points="50,10 60,35 50,46" fill="#fff" opacity="0.45"/>
-        <polygon points="87,35 65,51 50,46" fill="#fff" opacity="0.3"/>
-        <polygon points="13,35 40,35 50,46" fill="#fff" opacity="0.35"/>
-        <circle cx="50" cy="46" r="6" fill="#fef08a" stroke="${fillDark}" stroke-width="1"/>`;
+        <!-- Orbite céleste -->
+        <circle cx="50" cy="46" r="30" fill="none" stroke="${c.accent}" stroke-width="0.9" stroke-dasharray="2 4" opacity="0.7"/>
+        <!-- Couronne de rayons à 8 pointes -->
+        <polygon points="50,4 56,32 78,12 64,38 92,46 64,54 78,80 56,60 50,88 44,60 22,80 36,54 8,46 36,38 22,12 44,32" fill="${fillSub}" opacity="0.55"/>
+        <!-- Grande étoile astrale à 8 branches biseautées -->
+        <polygon points="50,8 58,36 84,24 68,46 92,52 64,56 72,84 50,64 28,84 36,56 8,52 32,46 16,24 42,36" fill="${fillMain}" stroke="${strokeLight}" stroke-width="1.5" stroke-linejoin="round"/>
+        <!-- Facettes lumineuses -->
+        <polygon points="50,8 58,36 50,46 42,36" fill="#fff" opacity="0.5"/>
+        <polygon points="92,52 64,56 50,46 68,46" fill="#fff" opacity="0.32"/>
+        <polygon points="8,52 32,46 50,46 36,56" fill="#fff" opacity="0.28"/>
+        <polygon points="50,88 50,64 58,56 50,46 42,56 50,64" fill="${fillDark}" opacity="0.3"/>
+        <!-- Noyau de lumière -->
+        <circle cx="50" cy="46" r="7" fill="#fef08a" stroke="${fillDark}" stroke-width="1"/>
+        <circle cx="50" cy="46" r="3" fill="#fff"/>
+        <circle cx="18" cy="20" r="1.8" fill="#fff"/><circle cx="82" cy="18" r="1.4" fill="#fff"/>
+        <circle cx="86" cy="70" r="1.6" fill="#fff"/><circle cx="16" cy="68" r="1.3" fill="#fff"/>`;
   }
 }
 
@@ -760,8 +902,10 @@ export function renderCardArtSVG(card) {
   const variant = seed % 5;
 
   const h = card.hue ?? 210;
-  const h2 = (h + 36) % 360;
-  const h3 = (h + 320) % 360;
+  // Palette analogique : les accents restent dans la famille chromatique de la carte
+  // (évite qu'une carte dorée de la Forge ne vire au vert à cause d'un décalage trop grand).
+  const h2 = (h + 26) % 360;
+  const h3 = (h + 334) % 360;
   const level = card.level || 1;
   const motif = card.motif || 'star';
   const deck = card.deck || 'vents';
@@ -769,12 +913,12 @@ export function renderCardArtSVG(card) {
   const uid = (card.id || 'c').replace(/[^a-zA-Z0-9_-]/g, '');
 
   const c = {
-    bright: `hsl(${h} 98% 88%)`,
-    light: `hsl(${h} 92% 74%)`,
-    mid: `hsl(${h2} 82% 48%)`,
-    deep: `hsl(${h3} 72% 16%)`,
-    bgDark: `hsl(${h} 68% 8%)`,
-    accent: `hsl(${h2} 96% 68%)`,
+    bright: `hsl(${h} 96% 88%)`,
+    light: `hsl(${h} 90% 74%)`,
+    mid: `hsl(${h} 80% 46%)`,
+    deep: `hsl(${h3} 66% 15%)`,
+    bgDark: `hsl(${h} 62% 8%)`,
+    accent: `hsl(${h2} 92% 66%)`,
   };
 
   const backdrop = renderDeckBackdrop(deck, uid, c);
@@ -789,28 +933,45 @@ export function renderCardArtSVG(card) {
 
   return `<svg class="art-svg" viewBox="0 0 100 100" aria-hidden="true">
     <defs>
-      <radialGradient id="bg-${uid}" cx="50%" cy="42%" r="68%">
-        <stop offset="0%" stop-color="hsl(${h} 92% 62% / 0.72)"/>
-        <stop offset="52%" stop-color="hsl(${h2} 76% 28% / 0.85)"/>
-        <stop offset="100%" stop-color="hsl(${h3} 70% 8% / 0.98)"/>
+      <radialGradient id="bg-${uid}" cx="50%" cy="40%" r="70%">
+        <stop offset="0%" stop-color="hsl(${h} 88% 58% / 0.82)"/>
+        <stop offset="48%" stop-color="hsl(${h} 74% 26% / 0.92)"/>
+        <stop offset="100%" stop-color="hsl(${h3} 68% 7% / 0.99)"/>
       </radialGradient>
       <linearGradient id="m-${uid}" x1="15%" y1="10%" x2="85%" y2="90%">
-        <stop offset="0%" stop-color="hsl(${h} 98% 88%)"/>
-        <stop offset="50%" stop-color="hsl(${h} 88% 64%)"/>
-        <stop offset="100%" stop-color="hsl(${h2} 84% 38%)"/>
+        <stop offset="0%" stop-color="hsl(${h} 97% 90%)"/>
+        <stop offset="48%" stop-color="hsl(${h} 88% 64%)"/>
+        <stop offset="100%" stop-color="hsl(${h2} 82% 36%)"/>
       </linearGradient>
       <linearGradient id="s-${uid}" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="hsl(${h2} 92% 72%)"/>
-        <stop offset="100%" stop-color="hsl(${h3} 78% 26%)"/>
+        <stop offset="0%" stop-color="hsl(${h2} 90% 72%)"/>
+        <stop offset="100%" stop-color="hsl(${h3} 74% 24%)"/>
+      </linearGradient>
+      <linearGradient id="bone-${uid}" x1="20%" y1="10%" x2="80%" y2="95%">
+        <stop offset="0%" stop-color="#fbf7ea"/>
+        <stop offset="48%" stop-color="#e2d9c1"/>
+        <stop offset="100%" stop-color="#b0a487"/>
+      </linearGradient>
+      <linearGradient id="ray-${uid}" x1="50%" y1="0%" x2="50%" y2="100%">
+        <stop offset="0%" stop-color="hsl(${h} 96% 90%)" stop-opacity="0.55"/>
+        <stop offset="60%" stop-color="hsl(${h} 90% 80%)" stop-opacity="0.12"/>
+        <stop offset="100%" stop-color="hsl(${h} 90% 80%)" stop-opacity="0"/>
       </linearGradient>
       <radialGradient id="vig-${uid}" cx="50%" cy="48%" r="58%">
-        <stop offset="65%" stop-color="#000" stop-opacity="0"/>
-        <stop offset="100%" stop-color="#02040a" stop-opacity="0.58"/>
+        <stop offset="62%" stop-color="#000" stop-opacity="0"/>
+        <stop offset="100%" stop-color="#02040a" stop-opacity="0.62"/>
       </radialGradient>
     </defs>
 
     <!-- 1. Ciel & Atmosphère -->
     <rect width="100" height="100" fill="url(#bg-${uid})"/>
+
+    <!-- 1b. Faisceaux de lumière zénithaux -->
+    <g opacity="0.42" pointer-events="none">
+      <polygon points="42,0 58,0 76,100 60,100" fill="url(#ray-${uid})"/>
+      <polygon points="30,0 38,0 40,100 28,100" fill="url(#ray-${uid})" opacity="0.55"/>
+      <polygon points="62,0 70,0 84,100 72,100" fill="url(#ray-${uid})" opacity="0.45"/>
+    </g>
 
     <!-- 2. Décor de Faction -->
     ${backdrop}
@@ -821,7 +982,9 @@ export function renderCardArtSVG(card) {
     <!-- 4. Halo de Rareté & Géométrie Sacrée -->
     ${rarityHalo}
 
-    <!-- 5. Ombre portée & Sujet Principal Multicouche -->
+    <!-- 5. Socle, Ombre portée & Sujet Principal Multicouche -->
+    <ellipse cx="50" cy="84" rx="30" ry="7" fill="#02040a" opacity="0.45"/>
+    <ellipse cx="50" cy="83" rx="20" ry="4" fill="hsl(${h} 60% 4%)" opacity="0.55"/>
     <g transform="translate(0, 2.5)" opacity="0.42" style="color: #02040a">
       <ellipse cx="50" cy="78" rx="24" ry="6" fill="#02040a"/>
     </g>
