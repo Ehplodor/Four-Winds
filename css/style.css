@@ -1654,7 +1654,14 @@ body {
     radial-gradient(ellipse 120% 90% at 50% 40%, #15121a 0%, #0a090d 55%, #030304 100%);
 }
 
-/* Grain pictural très léger + vignette */
+/* Grain pictural très léger + vignette.
+   Performance (mobile) : le fond fixe est isolé dans sa propre couche (contain) et n'utilise ni
+   mode de fusion ni flou, pour ne pas être recomposé à chaque image ni sous les panneaux. */
+.ambient-bg {
+  contain: strict;
+  transform: translateZ(0);
+}
+
 .ambient-bg::before,
 .ambient-bg::after {
   content: "";
@@ -1664,8 +1671,7 @@ body {
 }
 
 .ambient-bg::before {
-  opacity: 0.07;
-  mix-blend-mode: overlay;
+  opacity: 0.035;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
@@ -1676,7 +1682,7 @@ body {
 }
 
 .orb {
-  filter: blur(90px);
+  filter: none;
 }
 
 /* Le halo de la lampe */
@@ -1687,7 +1693,8 @@ body {
   left: 50%;
   margin-left: -310px;
   opacity: 0.32;
-  background: radial-gradient(ellipse, #e2b56a, transparent 70%);
+  background: radial-gradient(ellipse closest-side, #e2b56a 0%, rgba(226, 181, 106, 0.45) 40%, rgba(226, 181, 106, 0.12) 72%, transparent 100%);
+  will-change: opacity;
   animation: lampBreath 9s ease-in-out infinite;
 }
 
@@ -1698,13 +1705,14 @@ body {
   bottom: -220px;
   right: -160px;
   opacity: 0.16;
-  background: radial-gradient(circle, #4fc4e8, transparent 70%);
+  background: radial-gradient(circle closest-side, #4fc4e8 0%, rgba(79, 196, 232, 0.4) 45%, rgba(79, 196, 232, 0.1) 75%, transparent 100%);
 }
 
 @keyframes lampBreath {
-  0%, 100% { opacity: 0.30; transform: scale(1); }
-  45% { opacity: 0.36; transform: scale(1.04); }
-  55% { opacity: 0.33; }
+  /* Opacité seule : animée par le compositeur, sans repeindre ni re-flouter quoi que ce soit */
+  0%, 100% { opacity: 0.30; }
+  45% { opacity: 0.37; }
+  55% { opacity: 0.34; }
 }
 
 /* Cadran HUD en filigrane */
@@ -1729,7 +1737,10 @@ body {
 
 /* --- Barre supérieure : bandeau de laque noire, filet d'or et ligne de lumière --- */
 .topbar {
-  background: linear-gradient(180deg, rgba(6, 5, 8, 0.94), rgba(10, 9, 12, 0.84));
+  background: linear-gradient(180deg, rgba(6, 5, 8, 0.96), rgba(10, 9, 12, 0.9));
+  /* Fond presque opaque : le flou d'arrière-plan était invisible mais recalculé à chaque image */
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   border-bottom: 1px solid rgba(217, 181, 106, 0.22);
   box-shadow: 0 1px 0 rgba(143, 230, 255, 0.07), 0 10px 30px rgba(0, 0, 0, 0.55);
 }
@@ -1804,7 +1815,9 @@ body {
     linear-gradient(var(--neon), var(--neon)) bottom right / 14px 1px no-repeat,
     linear-gradient(var(--neon), var(--neon)) bottom right / 1px 14px no-repeat,
     radial-gradient(ellipse 90% 60% at 50% 0%, rgba(217, 181, 106, 0.07), transparent 70%),
-    linear-gradient(180deg, rgba(20, 17, 22, 0.88), rgba(8, 7, 10, 0.92));
+    linear-gradient(180deg, rgba(20, 17, 22, 0.9), rgba(8, 7, 10, 0.94));
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   border: 1px solid var(--panel-border);
   border-radius: 4px;
   box-shadow:
@@ -2023,14 +2036,17 @@ body {
   left: -40%;
   width: 30%;
   background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.55), transparent);
-  transform: skewX(-18deg);
+  transform: translateX(0) skewX(-18deg);
+  will-change: transform;
   animation: ctaGleam 5.5s ease-in-out infinite;
   pointer-events: none;
 }
 
 @keyframes ctaGleam {
-  0%, 70% { left: -40%; }
-  100% { left: 130%; }
+  /* transform plutôt que left : pas de recalcul de mise en page à chaque image.
+     Le reflet (30 % du bouton) parcourt 170 % du bouton, soit ~567 % de sa propre largeur. */
+  0%, 70% { transform: translateX(0) skewX(-18deg); }
+  100% { transform: translateX(567%) skewX(-18deg); }
 }
 
 .cta-btn:hover,
@@ -2302,10 +2318,8 @@ body {
 }
 
 @keyframes pulseCellNeon {
-  50% {
-    border-color: rgba(143, 230, 255, 0.7);
-    box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.85), inset 0 0 14px rgba(143, 230, 255, 0.12);
-  }
+  /* Bordure seule : une ombre animée repeignait les 9 cases à chaque image */
+  50% { border-color: rgba(143, 230, 255, 0.7); }
 }
 
 .cell.target:hover,
@@ -2573,6 +2587,16 @@ body {
   background:
     radial-gradient(ellipse 60% 50% at 50% 40%, rgba(40, 30, 20, 0.35), rgba(0, 0, 0, 0.88) 80%);
   backdrop-filter: blur(5px) grayscale(0.4);
+}
+
+/* Écrans tactiles : pas de flou plein écran sous les modales (très coûteux sur les GPU mobiles) */
+@media (hover: none), (pointer: coarse) {
+  .overlay {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background:
+      radial-gradient(ellipse 60% 50% at 50% 40%, rgba(30, 24, 18, 0.72), rgba(0, 0, 0, 0.92) 80%);
+  }
 }
 
 .dialog .result {
