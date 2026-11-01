@@ -4,7 +4,7 @@
 // - Élémentaire (bonus/malus de case +1 / -1)
 // - Synergie (Résonance élémentaire alliée +1 & Cohésion de faction alliée +1)
 // - Bonus intrinsèques de carte (bonus global ou sideBonuses directionnels)
-// - Identique (Same), Plus et Enchaînement en cascade dynamique (Combo).
+// - Identique (Same), Mur Identique (Same Wall), Plus et Enchaînement en cascade dynamique (Combo).
 // La Mort Subite (enchaînement de manches en cas d'égalité) est gérée au niveau du match, dans js/match.js.
 
 import { ELEMENT_KEYS } from './cards.js';
@@ -24,6 +24,7 @@ export const DEFAULT_RULES = {
   elemental: false,
   synergy: false,
   same: false,
+  sameWall: false,
   plus: false,
   combo: true,
   open: false,
@@ -242,15 +243,24 @@ export function play(state, handIndex, cell) {
 
   const adj = neighbors(cell).filter((n) => Boolean(placedBoard[n.cell]));
 
-  // 1. Règle « Identique » (Same) avec prise en compte de tous les bonus sur placedBoard
-  if (rules.same && adj.length >= 2) {
+  // 1. Règle « Identique » (Same) avec prise en compte de tous les bonus sur placedBoard.
+  // Avec « Mur Identique » (Same Wall), chaque bord du plateau compte comme une valeur A (10) :
+  // un côté à A contre un bord compte comme une égalité (mais il n'y a rien à capturer).
+  if (rules.same) {
     const matches = adj.filter((n) => {
       const myVal = cellSideValue(placedBoard, cell, n.side, boardElements, rules);
       const oppVal = cellSideValue(placedBoard, n.cell, n.opp, boardElements, rules);
       return myVal === oppVal;
     });
+    let wallMatches = 0;
+    if (rules.sameWall) {
+      const inside = new Set(neighbors(cell).map((n) => n.side));
+      for (const d of DIRS) {
+        if (!inside.has(d.side) && cellSideValue(placedBoard, cell, d.side, boardElements, rules) === 10) wallMatches++;
+      }
+    }
     const enemyMatches = matches.filter((n) => placedBoard[n.cell].owner !== player);
-    if (matches.length >= 2 && enemyMatches.length >= 1) {
+    if (matches.length + wallMatches >= 2 && enemyMatches.length >= 1) {
       events.tags.push('IDENTIQUE !');
       for (const n of enemyMatches) {
         board[n.cell] = { card: board[n.cell].card, owner: player };

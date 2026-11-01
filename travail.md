@@ -190,3 +190,16 @@ Ce document récapitule, étape par étape et au fil de l'eau, l'analyse, la con
   - **Serveur local** limité à 127.0.0.1, fichiers cachés (`.git`) refusés, correction d'un contournement du contrôle de dossier et d'un plantage sur URL malformée.
 - **Documentation** : `architecture.md` réécrit (modules actuels, modèle de sécurité et limites connues), README mis à jour.
 - Validation : `npm test` — **25 / 25 tests réussis** ; parties complètes vérifiées dans Chromium (IA avec Mort Subite, duel en direct entre deux onglets, aller-retour de liens SMS avec lien falsifié et lien périmé, chargement hors ligne).
+
+---
+
+## Étape 14 — Duel à distance sans relais, mains cachées vérifiables (Terminé)
+- **Mains cachées vérifiables** (nouveau module **`js/duel.js`**) : engagement SHA-256 de chaque main, aléa commun tiré à deux pour le premier joueur et les cases élémentaires, contrôle immédiat de chaque carte annoncée (deck, niveau, pas déjà jouée), révélation et vérification complète en fin de manche. Une triche annule la partie, qui n'est pas comptée. Mort Subite seulement après vérification.
+- **Connexion directe par liens** (`js/network.js` réécrit) : lien d'invitation `#join=` et lien de réponse `#reply=` contenant les offres WebRTC compressées, sans relais ni serveur de jeu. Code de vérification à 4 symboles tiré des empreintes DTLS. Transmission automatique de la réponse à l'onglet de l'hôte (`BroadcastChannel`).
+- **Retrait** du mode SMS / lien compact, des relais MQTT, des codes de salon et du chiffrement associé. CSP réduite à `connect-src 'self'`.
+- **Coupure = pause** : messages numérotés et resynchronisés, journal enregistré à chaque événement (`localStorage`), lien de reprise créé par l'hôte, reprise après rechargement de page. **Seul l'abandon explicite** (bouton « Abandonner », avec confirmation) donne la victoire.
+- **Mur Identique** (`sameWall`) dans le moteur, le salon et la barre des règles.
+- **Serveur local** : https optionnel (`TLS_CERT` / `TLS_KEY`, certificats mkcert) pour tester sur téléphone ; README : GitHub Pages et mkcert.
+- **Reporté** : découpage de `main.js` (décision du 1er novembre 2026).
+- Validation : `npm test` — **28 / 28 tests réussis** (dont 9 sur le protocole du duel) ; dans Chromium, duel complet entre deux onglets (invitation, réponse transmise automatiquement, code identique des deux côtés, mains adverses cachées, résultat identique), revanche, coupure puis reprise par lien avec plateau identique, abandon, lien invalide refusé ; parties contre l'IA et à deux en local ; chargement hors ligne ; aucune erreur console ni violation CSP.
+

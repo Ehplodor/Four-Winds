@@ -14,22 +14,9 @@ import {
 import { chooseMove, opponentCandidatesFor } from '../js/ai.js';
 import { createMatch, playMatchMove, replayMatch, suddenDeathHands, MAX_ROUNDS } from '../js/match.js';
 import { CARDS, DECKS, ELEMENTS, dealHands, renderCardArtSVG } from '../js/cards.js';
-import {
-  createSeededRng,
-  encodeCompactMatch,
-  decodeCompactMatch,
-  buildShareLinks,
-  renderShareCardSVG,
-  generateRoomCode,
-  normalizeRoomCode,
-  formatRoomCode,
-  sanitizePacket,
-  deriveRoomSecrets,
-  sealPacket,
-  openPacket,
-  verifyTokenContinuity,
-  RULE_KEYS,
-} from '../js/network.js';
+import { createSeededRng } from '../js/rng.js';
+import { DUEL_RULE_KEYS as RULE_KEYS } from '../js/duel.js';
+import { encodeSignal, decodeSignal, extractSignalToken } from '../js/network.js';
 
 const card = (values, id = values.join(''), element = 'vent') => ({
   id,
@@ -326,53 +313,8 @@ test('les bonus intrinsèques de carte (bonus global et sideBonuses) fonctionnen
   assert.equal(getEffectiveValue(boostedCard, 1), 5);
 });
 
-test('le codec réseau sans serveur (SMS / URL compacte) reconstruit exactement une partie en cours ou terminée', () => {
-  const seed = 98765432;
-  const rules = { elemental: true, synergy: true, same: true, plus: true, combo: true, open: false };
-  const rng = createSeededRng(seed);
-  const hands = dealHands(rng, { deck0: 'ombres', deck1: 'forge' });
-  let g = createGame({ hands, firstPlayer: 1, rules, rng });
-
-  const moves = [];
-  for (let step = 0; step < 5; step++) {
-    const m = chooseMove(g, { difficulty: 'tactician', rng });
-    g = play(g, m.handIndex, m.cell).state;
-    moves.push(m);
-  }
-
-  const token = encodeCompactMatch({
-    seed,
-    deck0: 'ombres',
-    deck1: 'forge',
-    firstPlayer: 1,
-    rules,
-    moves,
-  });
-
-  // Le jeton complet doit tenir en moins de 30 caractères pour un SMS ultra-court
-  assert.ok(token.length <= 30, `Jeton trop long (${token.length}) : ${token}`);
-
-  const decoded = decodeCompactMatch(token);
-  assert.ok(decoded);
-  assert.equal(decoded.seed, seed);
-  assert.equal(decoded.deck0, 'ombres');
-  assert.equal(decoded.deck1, 'forge');
-  assert.equal(decoded.firstPlayer, 1);
-  assert.deepEqual(decoded.moves, moves);
-  assert.deepEqual(score(decoded.game), score(g));
-  assert.equal(decoded.game.turn, g.turn);
-  assert.deepEqual(decoded.game.boardElements, g.boardElements);
-
-  const links = buildShareLinks({ token, scoreText: '6-4' });
-  assert.ok(links.url.includes(encodeURIComponent(token)));
-  assert.ok(links.smsHref.startsWith('sms:'));
-
-  const badgeSvg = renderShareCardSVG(token);
-  assert.ok(badgeSvg.startsWith('<svg') && badgeSvg.includes('</svg>'));
-});
-
 // ---------------------------------------------------------------------------
-// Match, Mort Subite, codec v2 et sécurité réseau
+// Match, Mort Subite et liens de connexion directe
 // ---------------------------------------------------------------------------
 
 const ALL_RULES = Object.fromEntries(RULE_KEYS.map((k) => [k, true]));
@@ -385,31 +327,6 @@ function playOut(match, limit = 9) {
   }
   return m;
 }
-
-test("l'hôte et le destinataire d'un lien reconstruisent exactement la même distribution", () => {
-  for (let seed = 1; seed < 40; seed++) {
-    const params = { seed: seed * 7919, deck0: 'vents', deck1: 'abysses', firstPlayer: seed % 2, rules: { elemental: true } };
-    const host = createMatch(params);
-    const decoded = decodeCompactMatch(encodeCompactMatch({ ...params, moves: [] }));
-    assert.deepEqual(decoded.game.hands.map((h) => h.map((c) => c.id)), host.game.hands.map((h) => h.map((c) => c.id)));
-    assert.deepEqual(decoded.game.boardElements, host.game.boardElements);
-  }
-});
-
-test('le lien compact conserve toutes les combinaisons de règles (y compris les 7 règles actives)', () => {
-  for (let mask = 0; mask < 1 << RULE_KEYS.length; mask++) {
-    const rules = Object.fromEntries(RULE_KEYS.map((k, i) => [k, Boolean(mask & (1 << i))]));
-    const decoded = decodeCompactMatch(encodeCompactMatch({ seed: 5, deck0: 'forge', deck1: 'ombres', rules, moves: [] }));
-    for (const k of RULE_KEYS) assert.equal(decoded.rules[k], rules[k], `règle ${k} perdue pour le masque ${mask}`);
-  }
-});
-
-test('un lien malformé ou contenant un coup illégal est refusé sans exception', () => {
-  const bad = ['', 'x', '2.abc', '2.zzzzzzzz.001.0.', '2.abc.401.0.', '2.abc.001.zzz.', '1.abc.0010.ZZ', '2.abc.001.0.00', 'a'.repeat(500)];
-  for (const t of bad) assert.equal(decodeCompactMatch(t), null, t);
-  // Ancien format toujours lisible
-  assert.ok(decodeCompactMatch('1.abc.0010.'));
-});
 
 test('Mort Subite : une égalité relance une manche avec les cartes de chaque couleur', () => {
   // On cherche une graine qui mène à une égalité avec l'IA Tacticien des deux côtés.
@@ -431,11 +348,6 @@ test('Mort Subite : une égalité relance une manche avec les cartes de chaque c
   assert.deepEqual(found.after.game.hands, suddenDeathHands(found.before));
   assert.equal(found.after.game.turn, 1 - found.params.firstPlayer);
 
-  // Le lien SMS rejoue la Mort Subite à l'identique
-  const decoded = decodeCompactMatch(encodeCompactMatch({ ...found.params, moves: found.moves }));
-  assert.equal(decoded.match.round, 2);
-  assert.deepEqual(decoded.game.hands, found.after.game.hands);
-  assert.deepEqual(decoded.game.boardElements, found.after.game.boardElements);
 });
 
 test('sans Mort Subite, une égalité termine la partie ; avec, le match est borné à MAX_ROUNDS manches', () => {
@@ -444,53 +356,6 @@ test('sans Mort Subite, une égalité termine la partie ; avec, le match est bor
   assert.equal(m.round, 1);
   assert.equal(MAX_ROUNDS, 5);
   assert.throws(() => replayMatch({ seed: 3, deck0: 'vents', deck1: 'vents', rules: {} }, Array(50).fill({ handIndex: 0, cell: 0 })));
-});
-
-test('codes de salon : 8 caractères non ambigus, saisie tolérante, rejet des codes invalides', () => {
-  const code = generateRoomCode();
-  assert.match(code, /^[2-9A-HJ-NP-Z]{8}$/);
-  assert.equal(normalizeRoomCode(formatRoomCode(code).toLowerCase()), code);
-  assert.equal(normalizeRoomCode('<img src=x onerror=alert(1)>'), null);
-  assert.equal(normalizeRoomCode('ABC'), null);
-  assert.equal(normalizeRoomCode('ABCD-EFG0'), null); // 0 exclu
-});
-
-test('les messages réseau sont filtrés : champs inconnus retirés, valeurs hors bornes rejetées', () => {
-  const base = { sender: 'p_1', msgId: 'm1', ts: Date.now() };
-  assert.equal(sanitizePacket({ ...base, type: 'game-move', handIndex: 9, cell: 0, ply: 0 }), null);
-  assert.equal(sanitizePacket({ ...base, type: 'game-move', handIndex: 0, cell: 0 }), null);
-  assert.equal(sanitizePacket({ ...base, type: 'game-emote', text: '<script>' }), null);
-  assert.equal(sanitizePacket({ ...base, ts: Date.now() - 3600_000, type: 'hello', isHost: true }), null);
-  assert.equal(sanitizePacket({ ...base, type: 'game-start', seed: 1, deck0: '__proto__', deck1: 'vents', firstPlayer: 0, rules: {}, moves: [] }), null);
-  const ok = sanitizePacket({ ...base, type: 'game-start', seed: 1, deck0: 'vents', deck1: 'forge', firstPlayer: 1, rules: { plus: true, evil: 'x' }, moves: [{ handIndex: 0, cell: 4, x: 1 }], extra: 1 });
-  assert.deepEqual(Object.keys(ok.rules).sort(), [...RULE_KEYS].sort());
-  assert.deepEqual(ok.moves, [{ handIndex: 0, cell: 4 }]);
-  assert.equal(ok.extra, undefined);
-});
-
-test('chiffrement du salon : aller-retour, rejet avec un autre code ou un message altéré', async () => {
-  const a = await deriveRoomSecrets('ABCDEFGH');
-  const same = await deriveRoomSecrets('ABCDEFGH');
-  const other = await deriveRoomSecrets('ABCDEFGJ');
-  assert.equal(a.topicId, same.topicId);
-  assert.notEqual(a.topicId, other.topicId);
-  assert.ok(!a.topicId.includes('ABCD'));
-
-  const sealed = await sealPacket(a, { type: 'hello', n: 1 });
-  assert.deepEqual(await openPacket(same, sealed), { type: 'hello', n: 1 });
-  assert.equal(await openPacket(other, sealed), null);
-  const flipped = sealed.slice(0, -4) + (sealed.slice(-4, -3) === 'A' ? 'B' : 'A') + sealed.slice(-3);
-  assert.equal(await openPacket(a, flipped), null);
-  assert.equal(await openPacket(a, '{"type":"hello"}'), null);
-});
-
-test("anti-triche SMS : détection d'un historique réécrit ou d'un lien périmé", () => {
-  const mv = (...cells) => cells.map((cell) => ({ handIndex: 0, cell }));
-  assert.equal(verifyTokenContinuity(null, mv(1)), 'new');
-  assert.equal(verifyTokenContinuity(mv(1, 2), mv(1, 2)), 'same');
-  assert.equal(verifyTokenContinuity(mv(1, 2), mv(1, 2, 3)), 'extends');
-  assert.equal(verifyTokenContinuity(mv(1, 2), mv(1)), 'stale');
-  assert.equal(verifyTokenContinuity(mv(1, 2), mv(1, 5, 3)), 'tampered');
 });
 
 test("l'IA Grand Maître ne lit pas la main cachée de son adversaire", () => {
@@ -506,4 +371,36 @@ test("l'IA Grand Maître ne lit pas la main cachée de son adversaire", () => {
     chooseMove(g, { difficulty: 'master', opponentCandidates: candidates, rng }),
     chooseMove(alt, { difficulty: 'master', opponentCandidates: candidates, rng }),
   );
+});
+
+test('Mur Identique : un côté à A contre le bord compte comme une égalité pour Identique', () => {
+  const ace = { ...card([10, 3, 1, 1], 'ace'), level: 1 };
+  // Carte posée en haut au centre (case 1) : haut = A contre le bord, droite = 3 contre la gauche (3) de la voisine.
+  const enemy = card([1, 1, 1, 3], 'enemy');
+  const setup = (rules) => {
+    let g = createGame({ hands: [[enemy, card([1, 1, 1, 1], 'x')], [ace]], rules, firstPlayer: 0 });
+    g = play(g, 0, 2).state; // joueur 0 en haut à droite
+    return play(g, 0, 1); // joueur 1 en haut au centre
+  };
+  assert.deepEqual(setup({ same: true }).captured, []);
+  const r = setup({ same: true, sameWall: true });
+  assert.deepEqual(r.captured, [2]);
+  assert.ok(r.events.tags.includes('IDENTIQUE !'));
+});
+
+test('liens de connexion directe : aller-retour, rejet des liens altérés ou trop gros', async () => {
+  const sdp = 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\na=fingerprint:sha-256 AB:CD\r\n';
+  const token = await encodeSignal({ v: 1, k: 'o', inv: '0123456789abcdef', sid: 'fedcba9876543210', resume: true, sdp });
+  assert.match(token, /^[A-Za-z0-9_-]+$/);
+  assert.deepEqual(await decodeSignal(token), { k: 'o', inv: '0123456789abcdef', sid: 'fedcba9876543210', resume: true, sdp });
+  assert.equal(extractSignalToken(`https://exemple.fr/jeu/#join=${token}`, 'join'), token);
+  assert.equal(extractSignalToken(` ${token} `, 'join'), token);
+  for (const bad of ['', '!!', 'a'.repeat(9000), token.slice(0, -5), await encodeSignal({ v: 1, k: 'o', inv: 'x', sid: 'y', sdp })]) {
+    assert.equal(await decodeSignal(bad), null);
+  }
+  assert.equal(await decodeSignal(await encodeSignal({ v: 1, k: 'a', inv: '0123456789abcdef', sid: '0123456789abcdef', sdp: '<script>' })), null);
+  // Bombe de décompression : petit lien, contenu énorme
+  const bomb = await encodeSignal({ v: 1, k: 'o', inv: '0123456789abcdef', sid: '0123456789abcdef', sdp: 'v=0' + ' '.repeat(500000) });
+  assert.ok(bomb.length < 8000);
+  assert.equal(await decodeSignal(bomb), null);
 });

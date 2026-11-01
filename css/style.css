@@ -579,53 +579,35 @@ button, select, input {
   gap: 10px;
 }
 
-.room-code-display {
-  display: flex;
-  align-items: center;
-  gap: 14px;
+.remote-note {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-muted);
 }
 
-.room-code-pill {
-  font-family: "Courier New", monospace;
-  font-size: 1.55rem;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  color: var(--gold-bright);
-  padding: 8px 16px;
-  border-radius: 10px;
-  background: rgba(242, 212, 107, 0.12);
-  border: 1px dashed var(--gold);
+.remote-error {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.45);
 }
 
-.share-matrix-svg {
-  width: 64px;
-  height: 64px;
-  flex: none;
+.modern-input.link-field {
+  width: 100%;
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
 }
 
 .remote-actions-row {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.sms-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: #fff;
-  font-weight: 600;
-  font-size: 0.85rem;
-  text-decoration: none;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  cursor: pointer;
-}
-
-.sms-btn:hover {
-  filter: brightness(1.1);
 }
 
 .remote-input-row {

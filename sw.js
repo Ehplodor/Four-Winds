@@ -1,5 +1,5 @@
-// Service worker : met l'application en cache pour jouer hors ligne et gérer les liens ?room= / ?turn= sur mobile.
-const VERSION = 'v8';
+// Service worker : met l'application en cache pour jouer hors ligne (les liens d'invitation #join= / #reply= restent côté navigateur).
+const VERSION = 'v9';
 const CACHE = `quatre-vents-${VERSION}`;
 const ASSETS = [
   './',
@@ -14,6 +14,7 @@ const ASSETS = [
   'js/art.js',
   'js/audio.js',
   'js/network.js',
+  'js/duel.js',
   'manifest.webmanifest',
   'icons/icon.svg',
   'icons/icon-192.png',
@@ -32,7 +33,7 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Réseau d'abord, repli sur le cache hors ligne. Les liens ?turn=... et ?room=... retombent sur la page
+// Réseau d'abord, repli sur le cache hors ligne : une navigation hors ligne retombe sur la page
 // d'accueil en cache. Seules les réponses valides de notre origine sont mises en cache.
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);

@@ -6,8 +6,8 @@ import {
   getCardBonuses,
 } from './engine.js';
 import { chooseMove, opponentCandidatesFor } from './ai.js';
-import { createMatch, playMatchMove, replayMatch, MAX_ROUNDS } from './match.js';
-import { randomInt } from './rng.js';
+import { createMatch, playMatchMove, MAX_ROUNDS } from './match.js';
+import { randomInt, randomUint32 } from './rng.js';
 import {
   CARDS,
   DECKS,
@@ -17,20 +17,14 @@ import {
   renderCardArtSVG,
 } from './cards.js';
 import { sound } from './audio.js';
+import { DuelProtocol } from './duel.js';
 import {
-  generateSeed,
-  generateRoomCode,
-  normalizeRoomCode,
-  formatRoomCode,
-  encodeCompactMatch,
-  decodeCompactMatch,
-  matchKey,
-  verifyTokenContinuity,
-  buildShareLinks,
-  isRoomCryptoAvailable,
-  PeerRoomSession,
-  renderShareCardSVG,
-  EMOTES,
+  DirectLink,
+  decodeSignal,
+  extractSignalToken,
+  buildSignalLink,
+  isDirectLinkSupported,
+  REPLY_CHANNEL,
 } from './network.js';
 
 const AI_DELAY = 720;
@@ -78,7 +72,7 @@ const ui = {
 
 // Configuration et état de la session
 let config = {
-  mode: 'ai', // 'ai' | 'local' | 'online' | 'sms'
+  mode: 'ai', // 'ai' | 'local' | 'online'
   difficulty: 'tactician',
   deck0: 'vents',
   deck1: 'random',
@@ -86,6 +80,7 @@ let config = {
     elemental: true,
     synergy: true,
     same: true,
+    sameWall: false,
     plus: true,
     combo: true,
     open: false,
@@ -116,14 +111,11 @@ try {
 // Ils ne diffèrent que pendant la courte transition vers une manche de Mort Subite.
 let match = null;
 let game = null;
-let matchSeed = generateSeed();
+let matchSeed = 0;
 let matchFirstPlayer = 0;
 let matchDecks = ['vents', 'forge'];
 let matchMoves = [];
-let localPlayerIndex = 0; // 0 pour l'hôte / l'initiateur SMS, 1 pour l'invité
-let peerSession = null;
-let currentRoomCode = generateRoomCode();
-let pendingTamperedToken = null;
+let localPlayerIndex = 0; // en duel à distance : 0 pour l'hôte, 1 pour l'invité
 
 let selected = null;
 let hoveredCell = null;
@@ -144,35 +136,6 @@ function setMatch(next) {
   matchMoves = next.moves.slice();
 }
 
-function matchParams() {
-  return { seed: matchSeed, deck0: matchDecks[0], deck1: matchDecks[1], firstPlayer: matchFirstPlayer, rules: match?.rules || config.rules };
-}
-
-// Historique local des parties SMS : sert à repérer un lien dont l'historique a été réécrit.
-const SMS_HISTORY_KEY = 'qv_sms_history';
-const SMS_HISTORY_MAX = 30;
-
-function readSmsHistory() {
-  try {
-    const h = JSON.parse(localStorage.getItem(SMS_HISTORY_KEY) || '{}');
-    return h && typeof h === 'object' ? h : {};
-  } catch {
-    return {};
-  }
-}
-
-function rememberSmsState() {
-  if (!match) return;
-  try {
-    const h = readSmsHistory();
-    h[matchKey(matchParams())] = { moves: matchMoves.map((m) => [m.handIndex, m.cell]), me: localPlayerIndex, at: Date.now() };
-    const keys = Object.keys(h).sort((a, b) => (h[b].at || 0) - (h[a].at || 0));
-    for (const k of keys.slice(SMS_HISTORY_MAX)) delete h[k];
-    localStorage.setItem(SMS_HISTORY_KEY, JSON.stringify(h));
-  } catch {
-    // Ignore
-  }
-}
 
 // Navigation centralisée entre les écrans (Salon, Table de jeu, Codex) avec gestion du scroll et de l'historique
 function navigateTo(screen, { pushHistory = true } = {}) {
@@ -220,9 +183,6 @@ function playerName(p) {
     return labels[config.difficulty] || 'IA';
   }
   if (config.mode === 'online') {
-    return p === localPlayerIndex ? `Vous (J${p + 1})` : `Adversaire P2P (J${p + 1})`;
-  }
-  if (config.mode === 'sms') {
     return p === localPlayerIndex ? `Vous (J${p + 1})` : `Adversaire (J${p + 1})`;
   }
   return p === 0 ? 'Joueur 1' : 'Joueur 2';
@@ -230,27 +190,16 @@ function playerName(p) {
 
 function isHuman(p) {
   if (config.mode === 'ai') return p === 0;
-  if (config.mode === 'online' || config.mode === 'sms') return p === localPlayerIndex;
+  if (config.mode === 'online') return p === localPlayerIndex && duelPhase() === 'playing';
   return true; // 'local'
 }
 
 function isHandVisible(p) {
-  if (config.rules.open) return true;
+  // En duel à distance, la main adverse n'est connue qu'une fois révélée (cartes `hidden` sinon).
+  if (config.mode === 'online') return true;
+  if (game?.rules.open) return true;
   if (config.mode === 'ai') return p === 0;
-  if (config.mode === 'online' || config.mode === 'sms') return p === localPlayerIndex;
   return game ? game.turn === p : p === 0;
-}
-
-// Construit le jeton compact d'état de la partie en cours (pour SMS / Lien)
-function getCurrentMatchToken() {
-  return encodeCompactMatch({
-    seed: matchSeed,
-    deck0: matchDecks[0],
-    deck1: matchDecks[1],
-    firstPlayer: matchFirstPlayer,
-    rules: match?.rules || config.rules,
-    moves: matchMoves,
-  });
 }
 
 // Construit l'élément DOM d'une carte avec illustration SVG, élément, étoiles et tous les bonus/malus actifs
@@ -469,264 +418,782 @@ function attachTactilePlayableEvents(el, handIndex, card, owner) {
 }
 
 // =========================================================================
-// RENDU DU SALON (HUB) & CONFIGURATION P2P / SMS SANS SERVEUR
+// DUEL À DISTANCE : connexion directe par liens partagés + mains cachées vérifiables
 // =========================================================================
+// - js/network.js : connexion WebRTC directe, mise en relation par deux liens (#join= puis #reply=) ;
+// - js/duel.js : protocole d'engagement (chacun ne connaît que sa main, tout est vérifié en fin de manche),
+//   messages numérotés et journal pour reprendre après une coupure ou un rechargement de page.
+// Une coupure met la partie en pause ; seul un abandon explicite compte comme une défaite.
+
+// Un enregistrement par rôle : deux onglets du même navigateur peuvent jouer l'hôte et l'invité (tests).
+const DUEL_STORAGE_PREFIX = 'qv_duel_';
+const DUEL_ROLES = ['host', 'guest'];
+const EMOTES = ['👏 Bien joué !', '⚡ Quel combo !', '🔥 Belle prise !'];
+const EMOTE_MIN_INTERVAL = 1500;
+const REPLY_ACK_TIMEOUT = 1500;
+
+const net = {
+  duel: null, // DuelProtocol en cours
+  link: null, // DirectLink en cours (invitation, réponse ou connexion établie)
+  state: 'idle', // idle | inviting | connecting | replying | connected | lost
+  inviteUrl: null, // hôte : lien d'invitation à envoyer
+  replyUrl: null, // invité : lien de réponse à renvoyer
+  relayUrl: null, // lien de réponse reçu dans un onglet qui n'a pas créé l'invitation
+  pendingInvite: null, // invité : invitation reçue, pas encore acceptée
+  interrupted: null, // duel inachevé retrouvé dans le stockage local
+  verification: null, // code affiché des deux côtés une fois connectés
+  error: null,
+  lastEmoteAt: 0,
+  ui: Promise.resolve(), // file de présentation des événements du duel
+  channel: typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(REPLY_CHANNEL) : null,
+};
+
+function duelPhase() {
+  return net.duel?.m?.phase || null;
+}
+
+function duelActive() {
+  const p = duelPhase();
+  return p === 'setup' || p === 'playing' || p === 'reveal';
+}
+
+function onlineAvailable() {
+  return isDirectLinkSupported() && (typeof window === 'undefined' || window.isSecureContext !== false);
+}
+
+function saveDuel() {
+  if (!net.duel) return;
+  try {
+    localStorage.setItem(DUEL_STORAGE_PREFIX + net.duel.role, JSON.stringify(net.duel.snapshot()));
+  } catch {
+    // Ignore
+  }
+}
+
+function readSavedDuel(role) {
+  try {
+    const s = JSON.parse(localStorage.getItem(DUEL_STORAGE_PREFIX + role) || 'null');
+    const ok = s && s.v === 1 && s.role === role && Array.isArray(s.journal) && /^[0-9a-f]{16}$/.test(s.sessionId);
+    return ok ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+function forgetSavedDuel(role) {
+  try {
+    localStorage.removeItem(DUEL_STORAGE_PREFIX + role);
+  } catch {
+    // Ignore
+  }
+}
+
+function attachDuel(duel) {
+  net.duel = duel;
+  net.interrupted = null;
+  localPlayerIndex = duel.local;
+  duel.sendRaw = (msg) => net.link?.send(msg);
+  duel.onEvent = (evt) => {
+    saveDuel();
+    net.ui = net.ui.then(() => presentDuelEvent(evt)).catch((err) => console.error(err));
+  };
+}
+
+async function restoreSavedDuel(saved) {
+  try {
+    const duel = await DuelProtocol.restore(saved);
+    return duel.m && duel.m.phase !== 'over' ? duel : null;
+  } catch {
+    return null;
+  }
+}
+
+// Reprend un duel enregistré dans cet onglet (les autres onglets qui le tenaient le lâchent).
+function adoptDuel(duel) {
+  attachDuel(duel);
+  net.channel?.postMessage({ t: 'takeover', sid: duel.sessionId, role: duel.role });
+  if (duel.m?.match) {
+    selectMode('online');
+    selected = null;
+    hoveredCell = null;
+    busy = false;
+    setMatch(duel.m.match);
+  }
+}
+
+function newLink() {
+  net.link?.close();
+  const link = new DirectLink({
+    onOpen: () => onLinkOpen(link),
+    onMessage: (msg) => onLinkMessage(link, msg),
+    onClose: () => onLinkClose(link),
+  });
+  net.link = link;
+  net.verification = null;
+  return link;
+}
+
+async function onLinkOpen(link) {
+  if (net.link !== link) return;
+  net.state = 'connected';
+  net.inviteUrl = null;
+  net.replyUrl = null;
+  net.error = null;
+  net.verification = await link.verification();
+  sound.playSelectCard();
+  net.duel?.connected();
+  if (ui.dialog.dataset.net === '1') hideDialog();
+  refreshNetUi();
+  if (game && config.mode === 'online' && currentScreen === 'game') {
+    setMessage(`Connexion rétablie. ${turnMessage()}`);
+    render();
+  }
+}
+
+function onLinkMessage(link, msg) {
+  if (net.link !== link || !net.duel) return;
+  if (msg && msg.t === 'emote') return receiveEmote(msg);
+  net.duel.receive(msg).then(saveDuel);
+}
+
+function onLinkClose(link) {
+  if (net.link !== link) return;
+  const wasConnected = net.state === 'connected';
+  net.link = null;
+  net.verification = null;
+  net.inviteUrl = null;
+  net.replyUrl = null;
+  net.state = wasConnected ? 'lost' : 'idle';
+  if (!wasConnected) {
+    net.error =
+      "La connexion directe n'a pas pu s'établir. Certains réseaux (entreprise, partage de connexion, NAT strict) bloquent les connexions entre deux appareils : essayez depuis un autre réseau, ou créez une nouvelle invitation.";
+  }
+  refreshNetUi();
+  if (game && config.mode === 'online' && currentScreen === 'game') {
+    setMessage(turnMessage());
+    render();
+  }
+  if (duelActive() && currentScreen === 'game') showDuelPause();
+}
+
+function receiveEmote(msg) {
+  const now = Date.now();
+  if (!Number.isInteger(msg.e) || msg.e < 0 || msg.e >= EMOTES.length || now - net.lastEmoteAt < EMOTE_MIN_INTERVAL) return;
+  net.lastEmoteAt = now;
+  sound.playUiClick();
+  triggerComboBanner([EMOTES[msg.e]]);
+}
+
+// --- Hôte : invitation ---
+
+async function createInvite({ resume = false } = {}) {
+  if (!onlineAvailable()) {
+    net.error = 'Le duel à distance a besoin d’un navigateur récent et d’une page sécurisée (https:// ou localhost).';
+    return refreshNetUi();
+  }
+  if (!resume || !net.duel) {
+    attachDuel(new DuelProtocol({ role: 'host', deck: config.deck0 }));
+  }
+  const link = newLink();
+  net.state = 'inviting';
+  net.inviteUrl = null;
+  net.error = null;
+  refreshNetUi();
+  try {
+    const token = await link.createInvite({ sessionId: net.duel.sessionId, resume });
+    if (net.link !== link) return;
+    net.inviteUrl = buildSignalLink('join', token);
+  } catch {
+    if (net.link === link) {
+      net.state = 'idle';
+      net.error = "Impossible de préparer l'invitation sur ce navigateur.";
+    }
+  }
+  refreshNetUi();
+}
+
+async function acceptReplyToken(raw) {
+  const signal = await decodeSignal(extractSignalToken(raw, 'reply'));
+  if (!signal || signal.k !== 'a') throw new Error("Ce n'est pas un lien de réponse valide.");
+  if (!net.link || net.duel?.role !== 'host' || net.state !== 'inviting') {
+    throw new Error("Aucune invitation n'attend de réponse sur cette page.");
+  }
+  if (signal.sid !== net.duel.sessionId) throw new Error('Cette réponse concerne une autre partie.');
+  await net.link.acceptReply(signal);
+  net.state = 'connecting';
+  refreshNetUi();
+}
+
+// --- Invité : réponse ---
+
+async function receiveInviteToken(raw) {
+  const signal = await decodeSignal(extractSignalToken(raw, 'join'));
+  if (!signal || signal.k !== 'o') {
+    infoDialog("Lien d'invitation invalide", "Ce lien d'invitation est incomplet ou abîmé. Demandez à votre adversaire de vous le renvoyer.");
+    return;
+  }
+  if (!onlineAvailable()) {
+    infoDialog('Duel à distance indisponible', 'Ce navigateur ne permet pas la connexion directe, ou la page n’est pas sécurisée (https://).');
+    return;
+  }
+  selectMode('online');
+  net.pendingInvite = signal;
+  net.error = null;
+  if (signal.resume) {
+    await acceptInvite();
+    return;
+  }
+  showMenu();
+  sound.playSelectCard();
+}
+
+async function acceptInvite() {
+  const signal = net.pendingInvite;
+  if (!signal) return;
+  net.pendingInvite = null;
+
+  if (signal.resume) {
+    let duel = net.duel?.role === 'guest' && net.duel.sessionId === signal.sid ? net.duel : null;
+    if (!duel) {
+      const saved = readSavedDuel('guest');
+      if (saved?.sessionId === signal.sid) duel = await restoreSavedDuel(saved);
+      if (duel) adoptDuel(duel);
+    }
+    if (!duel) {
+      infoDialog(
+        'Partie introuvable',
+        "Ce lien de reprise concerne une partie qui n'est pas enregistrée dans ce navigateur. Ouvrez-le avec le navigateur où vous jouiez cette partie.",
+      );
+      return;
+    }
+  } else {
+    attachDuel(new DuelProtocol({ role: 'guest', deck: config.deck0, sessionId: signal.sid }));
+  }
+
+  const link = newLink();
+  net.state = 'replying';
+  net.replyUrl = null;
+  refreshNetUi();
+  try {
+    const token = await link.acceptInvite(signal);
+    if (net.link !== link) return;
+    net.replyUrl = buildSignalLink('reply', token);
+  } catch {
+    if (net.link === link) {
+      net.state = 'idle';
+      net.error = "Impossible de répondre à cette invitation sur ce navigateur.";
+    }
+  }
+  refreshNetUi();
+  if (signal.resume) {
+    if (game) {
+      navigateTo('game');
+      setMessage(turnMessage());
+      render();
+    }
+    showLinkDialog('reply');
+  }
+}
+
+// Un onglet ouvert depuis un lien de réponse transmet celle-ci à l'onglet qui a créé l'invitation.
+async function relayReply(raw) {
+  const token = extractSignalToken(raw, 'reply');
+  const acked = await new Promise((resolve) => {
+    if (!net.channel) return resolve(false);
+    const onMessage = (e) => {
+      if (e.data?.t === 'ack' && e.data.token === token.slice(0, 24)) done(true);
+    };
+    const timer = setTimeout(() => done(false), REPLY_ACK_TIMEOUT);
+    function done(value) {
+      clearTimeout(timer);
+      net.channel.removeEventListener('message', onMessage);
+      resolve(value);
+    }
+    net.channel.addEventListener('message', onMessage);
+    net.channel.postMessage({ t: 'reply', token });
+  });
+  if (acked) {
+    infoDialog(
+      'Réponse transmise',
+      "La réponse de votre adversaire a été transmise à l'onglet où vous avez créé l'invitation : la connexion s'y établit. Vous pouvez fermer cet onglet-ci.",
+    );
+    return;
+  }
+  net.relayUrl = buildSignalLink('reply', token);
+  showDialog(
+    `
+    <h2>Réponse reçue</h2>
+    <p style="color:var(--text-muted);line-height:1.5;">
+      Aucun onglet de ce navigateur n'attend cette réponse. Retournez dans l'onglet (ou le navigateur) où vous avez créé l'invitation
+      et collez-y ce lien. Si cet onglet a été fermé, l'invitation est perdue : créez-en une nouvelle.
+    </p>
+    <div class="dialog-actions">
+      <button type="button" class="cta-btn" data-action="copy-link" data-link="relay">📋 Copier le lien de réponse</button>
+      <button type="button" class="hud-btn" data-action="close">Fermer</button>
+    </div>
+  `,
+    { net: true },
+  );
+}
+
+net.channel?.addEventListener('message', async (e) => {
+  const d = e.data;
+  if (!d || typeof d !== 'object') return;
+  if (d.t === 'reply' && typeof d.token === 'string' && net.state === 'inviting') {
+    try {
+      await acceptReplyToken(d.token);
+      net.channel.postMessage({ t: 'ack', token: d.token.slice(0, 24) });
+    } catch {
+      // Réponse destinée à un autre onglet
+    }
+  } else if (d.t === 'takeover' && net.duel && d.sid === net.duel.sessionId && d.role === net.duel.role) {
+    net.link?.close();
+    net.link = null;
+    net.duel = null;
+    net.state = 'idle';
+    game = null;
+    match = null;
+    showMenu();
+    infoDialog('Partie reprise ailleurs', 'Cette partie a été reprise dans un autre onglet. Continuez-la là-bas.');
+  }
+});
+
+// --- Présentation des événements du duel ---
+
+function presentDuelEvent(evt) {
+  switch (evt.kind) {
+    case 'ready': {
+      selectMode('online');
+      localPlayerIndex = net.duel.local;
+      selected = null;
+      hoveredCell = null;
+      busy = false;
+      setMatch(evt.match);
+      if (ui.dialog.dataset.net === '1' || currentScreen !== 'game') hideDialog();
+      navigateTo('game');
+      sound.playSelectCard();
+      const opener = evt.match.firstPlayer === localPlayerIndex ? 'Vous engagez la manche.' : 'Votre adversaire engage la manche.';
+      setMessage(`${opener} ${turnMessage()}`);
+      render();
+      return null;
+    }
+    case 'move':
+      return presentDuelMove(evt);
+    case 'verifying':
+      setMessage('Fin de manche : vérification des mains…');
+      return null;
+    case 'revealed':
+      setMatch(evt.match);
+      render();
+      return null;
+    case 'sudden-death':
+      return new Promise((resolve) => {
+        busy = true;
+        game = evt.roundOver;
+        render();
+        setMessage(`Égalité ! Mort Subite : chacun reprend les cartes de sa couleur pour la manche ${evt.match.round}/${MAX_ROUNDS}.`);
+        setTimeout(() => {
+          busy = false;
+          setMatch(evt.match);
+          triggerComboBanner([`MORT SUBITE — MANCHE ${evt.match.round}`]);
+          setMessage(turnMessage());
+          render();
+          resolve();
+        }, SUDDEN_DEATH_DELAY);
+      });
+    case 'over':
+      refreshNetUi();
+      if (!evt.match) {
+        infoDialog('Partie annulée', evt.result?.message || 'La partie a été interrompue.');
+        return null;
+      }
+      setMatch(evt.match);
+      busy = false;
+      render();
+      endGame(evt.result);
+      return null;
+    case 'error':
+      console.warn('[duel]', evt.message);
+      return null;
+    default:
+      return null;
+  }
+}
+
+function presentDuelMove({ player, step, match: next }) {
+  const res = step.result;
+  const last = next.moves[next.moves.length - 1];
+  setMatch(next);
+  flipped = res.captured;
+  placed = last?.cell ?? null;
+  selected = null;
+  hoveredCell = null;
+
+  sound.playPlaceCard(res.placedBonuses?.totalMod || 0);
+  if (res.captured.length > 0) {
+    const isSpecial = res.events.tags.length > 0;
+    setTimeout(() => sound.playCapture(res.captured.length, isSpecial), 90);
+  }
+  if (res.events.tags.length > 0) triggerComboBanner(res.events.tags);
+  render();
+  if (step.roundOver) setMessage('Fin de manche : vérification des mains…');
+  else setMessage(player === localPlayerIndex ? turnMessage() : `Coup adverse joué. ${turnMessage()}`);
+  return null;
+}
+
+function playOnline(handIndex, cell) {
+  selected = null;
+  busy = true;
+  net.duel.playLocal(handIndex, cell).then(() => {
+    saveDuel();
+    net.ui = net.ui.then(() => {
+      busy = false;
+      render();
+    });
+  });
+}
+
+// --- Interface réseau ---
+
+function refreshNetUi() {
+  renderRemoteSetupBox();
+  updateNetBar();
+}
+
+function updateNetBar() {
+  const online = config.mode === 'online';
+  ui.netStatusBar?.classList.toggle('hidden', !online);
+  const code = net.verification ? ` — code ${net.verification}` : '';
+  const labels = {
+    idle: '⚪ Pas de connexion',
+    inviting: '🟡 Invitation envoyée, en attente de la réponse',
+    connecting: '🟡 Connexion en cours…',
+    replying: "🟡 En attente de la connexion de l'hôte…",
+    connected: `🟢 Connexion directe${code}`,
+    lost: '🟠 Connexion perdue : partie en pause',
+  };
+  if (ui.netIndicator) ui.netIndicator.textContent = labels[net.state] || labels.idle;
+  $('btn-reconnect')?.classList.toggle('hidden', !online || net.state === 'connected' || !duelActive());
+  $('btn-resign')?.classList.toggle('hidden', !online || !duelActive());
+  const canRematch = net.duel?.role === 'host' && net.state === 'connected' && !duelActive();
+  $('btn-again')?.classList.toggle('hidden', online && !canRematch);
+}
+
+function linkBlockHtml(kind) {
+  const url = kind === 'invite' ? net.inviteUrl : net.replyUrl;
+  if (!url) return '<p class="remote-note">Préparation du lien… (quelques secondes)</p>';
+  return `
+    <input type="text" class="modern-input link-field" readonly value="${escapeHtml(url)}" aria-label="Lien à envoyer" />
+    <div class="remote-actions-row">
+      <button type="button" class="cta-btn" data-action="share-link" data-link="${kind}" style="padding:8px 18px;font-size:0.9rem;">📱 Partager</button>
+      <button type="button" class="hud-btn" data-action="copy-link" data-link="${kind}">📋 Copier</button>
+    </div>
+  `;
+}
+
+function pasteReplyHtml() {
+  return `
+    <p class="remote-note">Quand votre adversaire vous renvoie son lien de réponse, ouvrez-le dans ce navigateur, ou collez-le ici :</p>
+    <div class="remote-input-row">
+      <input type="text" class="modern-input" data-paste="reply" autocomplete="off" spellcheck="false" placeholder="Lien de réponse (…#reply=…)" />
+      <button type="button" class="hud-btn" data-action="submit-reply">Valider</button>
+    </div>
+  `;
+}
+
+const PRIVACY_NOTE =
+  "Connexion directe et chiffrée entre les deux navigateurs, sans serveur de jeu ni relais. Seuls des serveurs STUN publics aident chaque appareil à connaître son adresse publique, et chaque joueur voit l'adresse IP de l'autre. Les mains restent secrètes jusqu'à la fin de la manche, puis sont vérifiées.";
+
 function renderRemoteSetupBox() {
   if (!ui.remoteSetupBox) return;
-  if (config.mode !== 'online' && config.mode !== 'sms') {
+  if (config.mode !== 'online') {
     ui.remoteSetupBox.classList.add('hidden');
     return;
   }
   ui.remoteSetupBox.classList.remove('hidden');
+  const error = net.error ? `<p class="remote-error">${escapeHtml(net.error)}</p>` : '';
 
-  if (config.mode === 'online') {
-    if (!peerSession) {
-      initHostPeerSession(currentRoomCode, true);
-    }
-    const { url, smsHref, message } = buildShareLinks({ roomCode: currentRoomCode });
-    const isConnected = peerSession?.peerConnected;
-    const shownCode = escapeHtml(formatRoomCode(currentRoomCode));
-    const cryptoOk = isRoomCryptoAvailable();
-
+  if (!onlineAvailable()) {
     ui.remoteSetupBox.innerHTML = `
-      <div class="remote-cols">
-        <div class="remote-card">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-            <strong style="color:var(--gold)">Héberger un Salon P2P</strong>
-            <span class="p2p-status-badge ${isConnected ? 'connected' : ''}" id="lobby-p2p-badge">
-              ${!cryptoOk ? '🔴 Indisponible ici' : isConnected ? '🟢 Adversaire connecté !' : '🟡 En attente d’un joueur…'}
-            </span>
-          </div>
-          <div class="room-code-display">
-            ${renderShareCardSVG(currentRoomCode)}
-            <div>
-              <div style="font-size:0.74rem;color:var(--text-muted);margin-bottom:4px;">Code du salon :</div>
-              <div class="room-code-pill">${shownCode}</div>
-            </div>
-          </div>
-          <div class="remote-actions-row">
-            <button type="button" class="hud-btn" id="btn-share-room">📱 Partager</button>
-            <a class="sms-btn" href="${escapeHtml(smsHref)}">💬 Inviter par SMS</a>
-            <button type="button" class="hud-btn" id="btn-copy-room">📋 Copier le lien</button>
-          </div>
-        </div>
-
-        <div class="remote-card">
-          <strong style="color:var(--gold)">Rejoindre le Salon d'un Ami</strong>
-          <p style="margin:0;font-size:0.8rem;color:var(--text-muted);">
-            Saisissez le code à 8 caractères communiqué par votre adversaire (ou ouvrez directement son lien) :
-          </p>
-          <div class="remote-input-row">
-            <input type="text" id="input-join-code" class="modern-input" maxlength="12" autocomplete="off" spellcheck="false" placeholder="Ex : ABCD-EFGH" />
-            <button type="button" class="cta-btn" id="btn-join-room" style="padding:8px 18px;font-size:0.9rem;">Rejoindre</button>
-          </div>
-          <div style="font-size:0.75rem;color:var(--text-muted);">
-            ${cryptoOk
-              ? 'La mise en relation passe par des relais publics gérés par des tiers, qui ne voient que des messages chiffrés avec une clé tirée du code. Les deux appareils passent ensuite en connexion directe WebRTC quand le réseau le permet. Ne partagez le code qu’avec votre adversaire.'
-              : 'Le duel en direct a besoin d’une page sécurisée (https:// ou localhost). Utilisez le mode SMS / Lien, ou ouvrez le jeu en https.'}
-          </div>
-        </div>
-      </div>
-    `;
-
-    $('btn-share-room')?.addEventListener('click', async () => {
-      sound.playUiClick();
-      if (navigator.share) {
-        try {
-          await navigator.share({ title: 'Les Quatre Vents — Table P2P', text: message, url });
-          return;
-        } catch {
-          // Fallback copie
-        }
-      }
-      await navigator.clipboard?.writeText(url);
-      $('btn-share-room').textContent = '✓ Lien copié !';
-    });
-
-    $('btn-copy-room')?.addEventListener('click', async () => {
-      sound.playUiClick();
-      await navigator.clipboard?.writeText(url);
-      $('btn-copy-room').textContent = '✓ Copié !';
-    });
-
-    $('btn-join-room')?.addEventListener('click', () => {
-      const raw = $('input-join-code')?.value || '';
-      if (!raw.trim()) return;
-      sound.playUiClick();
-      joinPeerRoom(raw);
-    });
-  } else if (config.mode === 'sms') {
-    ui.remoteSetupBox.innerHTML = `
-      <div class="remote-cols">
-        <div class="remote-card">
-          <strong style="color:var(--gold)">💬 Mode Universel par SMS / Lien Compact</strong>
-          <p style="margin:0;font-size:0.82rem;color:var(--text-muted);line-height:1.45;">
-            Jouez à distance <strong>sans connexion simultanée</strong> : chaque coup génère un lien court qui contient toute la partie, à envoyer par <strong>SMS, WhatsApp ou Signal</strong>.
-            Le lien n'est ni chiffré ni signé : le jeu repère un historique modifié par rapport à ce qu'il a déjà vu sur cet appareil, mais il ne peut rien vérifier au tout premier lien reçu.
-          </p>
-        </div>
-        <div class="remote-card">
-          <strong style="color:var(--gold)">Reprendre un code reçu par SMS</strong>
-          <div class="remote-input-row">
-            <input type="text" id="input-sms-token" class="modern-input" maxlength="400" autocomplete="off" spellcheck="false" placeholder="Coller un code 2.xxx… ou un lien" />
-            <button type="button" class="hud-btn" id="btn-load-sms">Charger</button>
-          </div>
-        </div>
-      </div>
-    `;
-
-    $('btn-load-sms')?.addEventListener('click', () => {
-      const raw = ($('input-sms-token')?.value || '').trim();
-      if (!raw) return;
-      sound.playUiClick();
-      let extracted = raw;
-      if (raw.includes('turn=')) {
-        try {
-          extracted = decodeURIComponent(raw.split('turn=')[1].split(/[&#]/)[0]);
-        } catch {
-          extracted = '';
-        }
-      }
-      loadMatchFromCompactToken(extracted);
-    });
-  }
-}
-
-function setPeerBadge(state) {
-  const labels = {
-    deriving: `🟡 Préparation du salon ${formatRoomCode(currentRoomCode)}…`,
-    waiting: `🟡 Salon ${formatRoomCode(currentRoomCode)} en attente…`,
-    connected: '🟢 Adversaire connecté (via relais chiffré)',
-    'connected-webrtc': '🟢 Connecté en WebRTC direct',
-    error: '🔴 Duel en direct indisponible (page non sécurisée)',
-  };
-  const badge = $('lobby-p2p-badge');
-  if (badge) {
-    const ok = state === 'connected' || state === 'connected-webrtc';
-    badge.className = `p2p-status-badge ${ok ? 'connected' : ''}`;
-    badge.textContent = labels[state] || labels.waiting;
-  }
-  if (ui.netIndicator) ui.netIndicator.textContent = `${labels[state] || labels.waiting} — salon ${formatRoomCode(currentRoomCode)}`;
-}
-
-function sendGameStart() {
-  peerSession?.sendSignal({
-    type: 'game-start',
-    seed: matchSeed,
-    deck0: matchDecks[0],
-    deck1: matchDecks[1],
-    firstPlayer: matchFirstPlayer,
-    rules: match.rules,
-    moves: matchMoves,
-  });
-}
-
-function showDesyncDialog(detail) {
-  showDialog(`
-    <h2>Partie désynchronisée</h2>
-    <p style="color:var(--text-muted);line-height:1.5;">${escapeHtml(detail)}</p>
-    <p style="color:var(--text-muted);line-height:1.5;">L'hôte peut relancer une manche depuis le salon. Vous pouvez aussi continuer par SMS / lien.</p>
-    <div class="dialog-actions"><button type="button" class="hud-btn" data-action="close">Fermer</button></div>
-  `);
-}
-
-function initHostPeerSession(roomCode, asHost = true) {
-  if (peerSession) peerSession.close();
-  currentRoomCode = roomCode;
-  localPlayerIndex = asHost ? 0 : 1;
-
-  peerSession = new PeerRoomSession({
-    roomCode: currentRoomCode,
-    isHost: asHost,
-    onStatus: ({ state }) => setPeerBadge(state),
-    onPeerJoined: () => {
-      sound.playSelectCard();
-      // Si l'hôte a déjà ouvert le plateau, il synchronise immédiatement la partie avec l'invité
-      if (asHost && match && config.mode === 'online' && !ui.game.classList.contains('hidden')) {
-        sendGameStart();
-      }
-    },
-    onGameStart: (pkt) => {
-      sound.playSelectCard();
-      startFromRemotePacket(pkt);
-    },
-    onMove: function onMove(pkt) {
-      if (config.mode !== 'online' || !match || !game) return;
-      // Pendant une transition (Mort Subite), le coup est mis de côté puis rejoué.
-      if (busy) return void setTimeout(() => onMove(pkt), 300);
-      if (game.turn === localPlayerIndex) return; // pas son tour
-      if (pkt.ply !== matchMoves.length) {
-        if (pkt.ply > matchMoves.length) showDesyncDialog('Un coup de votre adversaire est arrivé dans le désordre ou a été perdu.');
-        return; // coup déjà reçu (doublon) ou futur
-      }
-      try {
-        applyMove(pkt.handIndex, pkt.cell, { fromRemote: true });
-      } catch {
-        showDesyncDialog("Le coup reçu n'est pas jouable sur votre plateau.");
-      }
-    },
-    onEmote: (pkt) => {
-      sound.playUiClick();
-      triggerComboBanner([pkt.text]);
-    },
-  });
-  peerSession.start().catch(() => setPeerBadge('error'));
-}
-
-function joinPeerRoom(rawCode) {
-  const code = normalizeRoomCode(rawCode);
-  if (!code) {
-    showDialog(`
-      <h2>Code de salon invalide</h2>
-      <p style="color:var(--text-muted);line-height:1.5;">Un code de salon compte 8 caractères (lettres et chiffres, sans 0, 1, I ni O), par exemple ABCD-EFGH.</p>
-      <div class="dialog-actions"><button type="button" class="hud-btn" data-action="close">Fermer</button></div>
-    `);
+      <div class="remote-card">
+        <strong style="color:var(--gold)">Duel à distance indisponible ici</strong>
+        <p class="remote-note">Le duel à distance a besoin d'une page sécurisée (adresse en https:// ou localhost) et d'un navigateur récent. Ouvrez le jeu depuis son adresse https (par exemple GitHub Pages).</p>
+      </div>`;
     return;
   }
-  config.mode = 'online';
-  initHostPeerSession(code, false);
-  renderRemoteSetupBox();
-  showDialog(`
-    <h2>Connexion au salon ${escapeHtml(formatRoomCode(code))}</h2>
+
+  let html;
+  if (net.pendingInvite) {
+    html = `
+      <div class="remote-card">
+        <strong style="color:var(--gold)">📨 Invitation reçue</strong>
+        <p class="remote-note">Choisissez votre deck ci-dessous, puis acceptez : le jeu produira un lien de réponse à renvoyer à votre adversaire. L'hôte choisit les règles de table.</p>
+        <div class="remote-actions-row">
+          <button type="button" class="cta-btn" data-action="accept-invite" style="padding:8px 18px;font-size:0.9rem;">Accepter l'invitation</button>
+          <button type="button" class="hud-btn" data-action="cancel-link">Refuser</button>
+        </div>
+      </div>`;
+  } else if (net.state === 'replying') {
+    html = `
+      <div class="remote-card">
+        <strong style="color:var(--gold)">↩ Renvoyez ce lien de réponse à votre adversaire</strong>
+        ${linkBlockHtml('reply')}
+        <p class="remote-note">Gardez cette page ouverte : la connexion s'établit dès que votre adversaire ouvre ce lien, puis il lance la partie.</p>
+        <div class="remote-actions-row"><button type="button" class="hud-btn" data-action="cancel-link">Annuler</button></div>
+      </div>`;
+  } else if (net.state === 'inviting' || net.state === 'connecting') {
+    html = `
+      <div class="remote-card">
+        <strong style="color:var(--gold)">✉ Envoyez ce lien d'invitation à votre adversaire</strong>
+        ${net.state === 'connecting' ? '<p class="remote-note">Réponse reçue : connexion en cours…</p>' : `${linkBlockHtml('invite')}${pasteReplyHtml()}`}
+        <p class="remote-note">Gardez cette page ouverte jusqu'à la connexion. Chaque invitation ne sert qu'une fois.</p>
+        <div class="remote-actions-row"><button type="button" class="hud-btn" data-action="cancel-link">Annuler l'invitation</button></div>
+      </div>`;
+  } else if (net.state === 'connected') {
+    const host = net.duel?.role === 'host';
+    html = `
+      <div class="remote-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <strong style="color:var(--gold)">🟢 Connecté en direct à votre adversaire</strong>
+          <span class="p2p-status-badge connected">Code : ${escapeHtml(net.verification || '?')}</span>
+        </div>
+        <p class="remote-note">Vérifiez que votre adversaire voit le même code (par message ou de vive voix) : sinon, quelqu'un a modifié les liens en route et il faut recommencer.</p>
+        <p class="remote-note">${
+          host
+            ? 'Choisissez votre deck et les règles, puis ouvrez la table : les mains sont tirées à deux, sans que personne ne voie celle de l’autre.'
+            : "L'hôte choisit les règles et lance la partie. Votre deck est celui sélectionné ci-dessous."
+        }</p>
+        ${duelActive() && game ? '<div class="remote-actions-row"><button type="button" class="cta-btn" data-action="resume-game" style="padding:8px 18px;font-size:0.9rem;">Retour à la table</button></div>' : ''}
+      </div>`;
+  } else {
+    const interrupted = net.duel && duelActive() ? net.duel : null;
+    const resumeCard =
+      interrupted || net.interrupted
+        ? `
+      <div class="remote-card">
+        <strong style="color:var(--gold)">⏸ Duel interrompu</strong>
+        <p class="remote-note">${
+          (interrupted?.role || net.interrupted?.role) === 'host'
+            ? 'Créez un lien de reprise et envoyez-le à votre adversaire : la partie reprendra où elle en était.'
+            : "Demandez à votre adversaire (l'hôte) un lien de reprise, puis ouvrez-le dans ce navigateur."
+        }</p>
+        <div class="remote-actions-row">
+          <button type="button" class="cta-btn" data-action="resume-duel" style="padding:8px 18px;font-size:0.9rem;">Reprendre</button>
+          <button type="button" class="hud-btn" data-action="forget-duel">Oublier ce duel</button>
+        </div>
+      </div>`
+        : '';
+    html = `
+      ${resumeCard}
+      <div class="remote-cols">
+        <div class="remote-card">
+          <strong style="color:var(--gold)">Inviter un adversaire</strong>
+          <p class="remote-note">Le jeu crée un lien à envoyer par la messagerie de votre choix. Votre adversaire l'ouvre et vous renvoie un lien de réponse : vous êtes alors connectés en direct.</p>
+          <div class="remote-actions-row">
+            <button type="button" class="cta-btn" data-action="create-invite" style="padding:8px 18px;font-size:0.9rem;">Créer une invitation</button>
+          </div>
+        </div>
+        <div class="remote-card">
+          <strong style="color:var(--gold)">Rejoindre une partie</strong>
+          <p class="remote-note">Ouvrez le lien d'invitation reçu, ou collez-le ici :</p>
+          <div class="remote-input-row">
+            <input type="text" class="modern-input" data-paste="join" autocomplete="off" spellcheck="false" placeholder="Lien d'invitation (…#join=…)" />
+            <button type="button" class="hud-btn" data-action="submit-join">Rejoindre</button>
+          </div>
+        </div>
+      </div>`;
+  }
+  ui.remoteSetupBox.innerHTML = `${error}${html}<p class="remote-note">${PRIVACY_NOTE}</p>`;
+}
+
+// Fenêtre affichant un lien à transmettre (invitation de reprise côté hôte, réponse côté invité).
+function showLinkDialog(kind) {
+  const host = kind === 'invite';
+  showDialog(
+    `
+    <h2>${host ? '🔗 Lien de reprise' : '↩ Lien de réponse'}</h2>
+    <p style="color:var(--text-muted);line-height:1.5;">${
+      host
+        ? 'Envoyez ce lien à votre adversaire. La partie reprendra exactement où elle en était dès que vous aurez ouvert sa réponse.'
+        : "Renvoyez ce lien à votre adversaire et gardez cette page ouverte : la partie reprend dès qu'il l'ouvre."
+    }</p>
+    <div class="remote-card">
+      ${linkBlockHtml(kind)}
+      ${host ? pasteReplyHtml() : ''}
+    </div>
+    <div class="dialog-actions"><button type="button" class="hud-btn" data-action="close">Fermer</button></div>
+  `,
+    { net: true },
+  );
+}
+
+function showDuelPause() {
+  const host = net.duel?.role === 'host';
+  showDialog(
+    `
+    <h2>⏸ Connexion perdue</h2>
     <p style="color:var(--text-muted);line-height:1.5;">
-      Recherche de l'hôte du salon…<br>
-      Dès que l'hôte lance la partie (ou si sa table est déjà ouverte), le plateau s'ouvrira automatiquement.
+      La partie est en pause, rien n'est perdu : une coupure ne compte jamais comme un abandon.
+      ${host ? 'Créez un lien de reprise et envoyez-le à votre adversaire.' : "Votre adversaire (l'hôte) va vous envoyer un lien de reprise : ouvrez-le dans ce navigateur, ou collez-le ici."}
     </p>
+    ${
+      host
+        ? ''
+        : `<div class="remote-input-row">
+        <input type="text" class="modern-input" data-paste="join" autocomplete="off" spellcheck="false" placeholder="Lien de reprise (…#join=…)" />
+        <button type="button" class="hud-btn" data-action="submit-join">Reprendre</button>
+      </div>`
+    }
     <div class="dialog-actions">
-      <button type="button" class="hud-btn" data-action="close">Patienter dans le salon</button>
+      ${host ? '<button type="button" class="cta-btn" data-action="resume-invite">Créer un lien de reprise</button>' : ''}
+      <button type="button" class="hud-btn" data-action="close">Attendre</button>
+    </div>
+  `,
+    { net: true },
+  );
+}
+
+function confirmResign() {
+  showDialog(`
+    <h2>Abandonner le duel ?</h2>
+    <p style="color:var(--text-muted);line-height:1.5;">La partie sera comptée comme une défaite pour vous et une victoire pour votre adversaire.</p>
+    <div class="dialog-actions">
+      <button type="button" class="cta-btn" data-action="confirm-resign">Abandonner</button>
+      <button type="button" class="hud-btn" data-action="close">Continuer la partie</button>
     </div>
   `);
 }
 
-function startFromRemotePacket(pkt) {
-  let replayed;
+async function shareLink(url, btn) {
+  if (!url) return;
+  if (btn.dataset.action === 'share-link' && navigator.share) {
+    try {
+      await navigator.share({ title: 'Les Quatre Vents — Duel', text: 'Un duel aux Quatre Vents ? Ouvre ce lien :', url });
+      return;
+    } catch {
+      // Repli sur la copie
+    }
+  }
   try {
-    replayed = replayMatch(
-      { seed: pkt.seed, deck0: pkt.deck0, deck1: pkt.deck1, firstPlayer: pkt.firstPlayer, rules: pkt.rules },
-      pkt.moves,
-    );
+    await navigator.clipboard.writeText(url);
+    btn.textContent = '✓ Copié !';
   } catch {
-    showDesyncDialog("La partie envoyée par l'hôte contient un coup impossible.");
-    return;
+    const field = (btn.closest('.remote-card') || ui.dialog).querySelector('.link-field');
+    field?.select();
+    btn.textContent = 'Copiez le lien sélectionné';
   }
-  config.mode = 'online';
-  localPlayerIndex = 1;
-  selected = null;
-  hoveredCell = null;
-  busy = false;
-  setMatch(replayed.match);
-
-  navigateTo('game');
-  ui.netStatusBar?.classList.remove('hidden');
-  if (game.over) {
-    render();
-    endGame();
-    return;
-  }
-  setMessage(turnMessage());
-  render();
 }
 
+function pastedValue(btn, kind) {
+  const scope = btn.closest('.remote-card') || ui.dialog;
+  return scope.querySelector(`input[data-paste="${kind}"]`)?.value || '';
+}
+
+async function handleNetAction(action, btn) {
+  switch (action) {
+    case 'create-invite':
+      return createInvite();
+    case 'resume-invite':
+      await createInvite({ resume: true });
+      return showLinkDialog('invite');
+    case 'accept-invite':
+      return acceptInvite();
+    case 'cancel-link':
+      net.pendingInvite = null;
+      net.link?.close();
+      net.link = null;
+      net.state = 'idle';
+      net.inviteUrl = null;
+      net.replyUrl = null;
+      if (!duelActive()) net.duel = null;
+      return refreshNetUi();
+    case 'share-link':
+    case 'copy-link': {
+      const urls = { invite: net.inviteUrl, reply: net.replyUrl, relay: net.relayUrl };
+      return shareLink(urls[btn.dataset.link], btn);
+    }
+    case 'submit-reply': {
+      const raw = pastedValue(btn, 'reply').trim();
+      if (!raw) return;
+      try {
+        await acceptReplyToken(raw);
+      } catch (err) {
+        infoDialog('Lien de réponse refusé', err.message);
+      }
+      return;
+    }
+    case 'submit-join': {
+      const raw = pastedValue(btn, 'join').trim();
+      if (raw) return receiveInviteToken(raw);
+      return;
+    }
+    case 'resume-duel': {
+      if (!net.duel || !duelActive()) {
+        const duel = net.interrupted ? await restoreSavedDuel(net.interrupted) : null;
+        if (!duel) {
+          if (net.interrupted) forgetSavedDuel(net.interrupted.role);
+          net.interrupted = null;
+          refreshNetUi();
+          return infoDialog('Reprise impossible', "Ce duel enregistré n'a pas pu être relu.");
+        }
+        adoptDuel(duel);
+      }
+      if (game) navigateTo('game');
+      render();
+      if (net.duel.role === 'host') {
+        await createInvite({ resume: true });
+        return showLinkDialog('invite');
+      }
+      return showDuelPause();
+    }
+    case 'forget-duel':
+      if (net.duel && duelActive()) {
+        forgetSavedDuel(net.duel.role);
+        net.link?.close();
+        net.link = null;
+        net.duel = null;
+        net.state = 'idle';
+      }
+      if (net.interrupted) forgetSavedDuel(net.interrupted.role);
+      net.interrupted = null;
+      return refreshNetUi();
+    case 'reconnect':
+      return net.duel?.role === 'host' ? (await createInvite({ resume: true }), showLinkDialog('invite')) : showDuelPause();
+    case 'resign':
+      return confirmResign();
+    case 'confirm-resign':
+      hideDialog();
+      return net.duel?.resign().then(saveDuel);
+    default:
+      return undefined;
+  }
+}
+
+const NET_ACTIONS = new Set([
+  'create-invite',
+  'resume-invite',
+  'accept-invite',
+  'cancel-link',
+  'share-link',
+  'copy-link',
+  'submit-reply',
+  'submit-join',
+  'resume-duel',
+  'forget-duel',
+  'reconnect',
+  'resign',
+  'confirm-resign',
+]);
+
+function selectMode(mode) {
+  config.mode = mode;
+  document.querySelectorAll('[data-set-mode]').forEach((b) => b.classList.toggle('active', b.dataset.setMode === mode));
+  $('diff-selector')?.classList.toggle('hidden', mode !== 'ai');
+}
+
+// =========================================================================
+// RENDU DU SALON
+// =========================================================================
 function renderLobby() {
   ui.deckSelector.replaceChildren();
   for (const d of DECK_LIST) {
@@ -751,6 +1218,7 @@ function renderLobby() {
     `;
     btn.addEventListener('click', () => {
       config.deck0 = d.id;
+      if (net.duel?.role === 'guest') net.duel.setDeck(d.id);
       sound.playUiClick();
       renderLobby();
     });
@@ -788,6 +1256,7 @@ function renderActiveRulesBar() {
     ['elemental', 'Élémentaire'],
     ['synergy', 'Synergie'],
     ['same', 'Identique'],
+    ['sameWall', 'Mur Identique'],
     ['plus', 'Plus'],
     ['combo', 'Combo'],
     ['open', 'Main Ouverte'],
@@ -848,10 +1317,7 @@ function render() {
   ui.scores[1].textContent = s1;
 
   renderActiveRulesBar();
-  ui.netStatusBar?.classList.toggle('hidden', config.mode !== 'online' && config.mode !== 'sms');
-  if (config.mode === 'sms' && ui.netIndicator) {
-    ui.netIndicator.textContent = `💬 Mode SMS / Lien — coup n°${matchMoves.length + 1}`;
-  }
+  updateNetBar();
 
   for (const p of [0, 1]) {
     ui.names[p].textContent = playerName(p);
@@ -864,7 +1330,7 @@ function render() {
     const visible = isHandVisible(p);
 
     game.hands[p].forEach((card, i) => {
-      const el = cardEl(card, p, { hidden: !visible });
+      const el = cardEl(card, p, { hidden: !visible || card.hidden });
       const playable = !busy && !game.over && game.turn === p && isHuman(p);
       if (playable) {
         el.classList.add('playable');
@@ -975,14 +1441,12 @@ function turnMessage() {
     return p === 0 ? 'À vous de jouer — choisissez ou glissez une carte.' : `${playerName(1)} médite son coup…`;
   }
   if (config.mode === 'online') {
-    return p === localPlayerIndex
-      ? 'À votre tour de jouer (P2P en direct).'
-      : 'En attente du coup de votre adversaire…';
-  }
-  if (config.mode === 'sms') {
-    return p === localPlayerIndex
-      ? 'À vous : jouez votre coup, puis envoyez le lien à votre adversaire.'
-      : "En attente du lien de votre adversaire (bouton « SMS / Lien » pour renvoyer le vôtre).";
+    if (net.state !== 'connected') {
+      return p === localPlayerIndex
+        ? 'Connexion coupée : vous pouvez jouer, votre coup partira à la reconnexion.'
+        : 'Connexion coupée : partie en pause en attendant la reconnexion.';
+    }
+    return p === localPlayerIndex ? 'À vous de jouer.' : 'En attente du coup de votre adversaire…';
   }
   return `${playerName(p)}, à votre tour de jouer.`;
 }
@@ -1011,8 +1475,8 @@ function triggerComboBanner(tags) {
   }, 950);
 }
 
-function applyMove(handIndex, cell, { fromRemote = false } = {}) {
-  const ply = matchMoves.length;
+// Coup d'une partie locale (IA ou 2 joueurs sur le même écran). Le duel à distance passe par playOnline.
+function applyMove(handIndex, cell) {
   const { match: nextMatch, result: res, roundOver, suddenDeath } = playMatchMove(match, handIndex, cell);
   const totalMod = res.placedBonuses?.totalMod || 0;
   setMatch(nextMatch);
@@ -1023,11 +1487,6 @@ function applyMove(handIndex, cell, { fromRemote = false } = {}) {
   selected = null;
   hoveredCell = null;
 
-  // En mode P2P en ligne, transmettre immédiatement le coup à l'adversaire
-  if (config.mode === 'online' && !fromRemote && peerSession) {
-    peerSession.sendSignal({ type: 'game-move', handIndex, cell, ply });
-  }
-
   sound.playPlaceCard(totalMod);
   if (res.captured.length > 0) {
     const isSpecial = res.events.tags.length > 0;
@@ -1035,12 +1494,6 @@ function applyMove(handIndex, cell, { fromRemote = false } = {}) {
   }
   if (res.events.tags.length > 0) {
     triggerComboBanner(res.events.tags);
-  }
-
-  // En mode SMS, l'URL suit la partie pour pouvoir la partager à tout moment
-  if (config.mode === 'sms') {
-    rememberSmsState();
-    if (typeof history !== 'undefined') history.replaceState(null, '', `?turn=${encodeURIComponent(getCurrentMatchToken())}`);
   }
 
   if (suddenDeath) {
@@ -1054,28 +1507,25 @@ function applyMove(handIndex, cell, { fromRemote = false } = {}) {
       game = match.game;
       triggerComboBanner([`MORT SUBITE — MANCHE ${match.round}`]);
       render();
-      afterTurn(fromRemote);
+      afterTurn();
     }, SUDDEN_DEATH_DELAY);
     return;
   }
 
   render();
   if (game.over) return endGame();
-  afterTurn(fromRemote);
+  afterTurn();
 }
 
-// Suite d'un coup : message de tour, envoi du lien en mode SMS, tour de l'IA.
-function afterTurn(fromRemote) {
+// Suite d'un coup : message de tour, tour de l'IA.
+function afterTurn() {
   setMessage(turnMessage());
-  if (config.mode === 'sms' && !fromRemote && game.turn !== localPlayerIndex) {
-    setTimeout(() => showShareTurnDialog(), 520);
-    return;
-  }
   if (!isHuman(game.turn) && config.mode === 'ai') aiTurn();
 }
 
 function place(cell) {
   if (selected === null || busy) return;
+  if (config.mode === 'online') return playOnline(selected, cell);
   applyMove(selected, cell);
 }
 
@@ -1093,161 +1543,51 @@ function aiTurn() {
   }, AI_DELAY);
 }
 
-// Boîte de dialogue d'envoi de coup par SMS / Lien (Mode SMS ou Fallback P2P)
-function showShareTurnDialog() {
-  if (!game) return;
-  const token = getCurrentMatchToken();
-  const [s0, s1] = score(game);
-  const { url, message, smsHref } = buildShareLinks({
-    token,
-    scoreText: `${s0}-${s1}`,
-  });
-
-  showDialog(`
-    <h2>💬 Envoyer votre coup à distance</h2>
-    <p style="color:var(--text-muted);font-size:0.9rem;line-height:1.45;">
-      Toute la partie (plateau, mains, éléments et votre dernier coup) tient dans ce code de <strong>${token.length} caractères</strong>.
-      Votre adversaire n'a qu'à ouvrir le lien pour jouer son tour. Envoyez-le uniquement à lui : quiconque a le lien peut voir la partie.
-    </p>
-    <div class="room-code-display" style="margin:12px 0;justify-content:center;">
-      ${renderShareCardSVG(token)}
-      <div class="room-code-pill" style="font-size:1rem;letter-spacing:0.06em;word-break:break-all;">${escapeHtml(token)}</div>
-    </div>
-    <div class="dialog-actions">
-      <a class="sms-btn" href="${escapeHtml(smsHref)}">💬 Envoyer par SMS</a>
-      <button type="button" class="cta-btn" id="btn-native-share-turn" style="padding:9px 20px;font-size:0.92rem;">📱 Partager le lien</button>
-      <button type="button" class="hud-btn" id="btn-copy-turn-link">📋 Copier le lien</button>
-      <button type="button" class="hud-btn" data-action="close">Continuer sur cet écran</button>
-    </div>
-  `);
-
-  $('btn-native-share-turn')?.addEventListener('click', async () => {
-    sound.playUiClick();
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: 'Les Quatre Vents — Ton tour !', text: message, url });
-        return;
-      } catch {
-        // Fallback copie
-      }
-    }
-    await navigator.clipboard?.writeText(url);
-    $('btn-native-share-turn').textContent = '✓ Lien copié !';
-  });
-
-  $('btn-copy-turn-link')?.addEventListener('click', async () => {
-    sound.playUiClick();
-    await navigator.clipboard?.writeText(url);
-    $('btn-copy-turn-link').textContent = '✓ Lien copié !';
-  });
-}
-
-function smsInfoDialog(title, body, extraButtons = '') {
+function infoDialog(title, body) {
   showDialog(`
     <h2>${escapeHtml(title)}</h2>
     <p style="color:var(--text-muted);line-height:1.5;">${escapeHtml(body)}</p>
-    <div class="dialog-actions">${extraButtons}<button type="button" class="hud-btn" data-action="close">Fermer</button></div>
+    <div class="dialog-actions"><button type="button" class="hud-btn" data-action="close">Fermer</button></div>
   `);
 }
 
-function loadMatchFromCompactToken(token, { force = false } = {}) {
-  const decoded = decodeCompactMatch(token);
-  if (!decoded) {
-    smsInfoDialog('Code de partie invalide', "Le lien ou le code saisi n'a pas pu être reconnu, ou il contient un coup impossible.");
-    return;
-  }
-
-  // Comparaison avec ce que cet appareil sait déjà de la partie (anti-réécriture d'historique).
-  const known = readSmsHistory()[matchKey(decoded)];
-  const knownMoves = Array.isArray(known?.moves)
-    ? known.moves.filter((m) => Array.isArray(m)).map(([handIndex, cell]) => ({ handIndex, cell }))
-    : null;
-  let me = known && (known.me === 0 || known.me === 1) ? known.me : null;
-  const status = verifyTokenContinuity(knownMoves, decoded.moves);
-
-  if (status === 'stale' && !force) {
-    smsInfoDialog(
-      'Lien déjà dépassé',
-      'Ce lien montre un état plus ancien de la partie que celui enregistré sur cet appareil. Ouvrez le dernier lien reçu de votre adversaire.',
-    );
-    return;
-  }
-
-  let suspicious = status === 'tampered';
-  if (status === 'extends') {
-    // Chaque coup ajouté doit avoir été joué par l'adversaire, à son tour.
-    try {
-      const params = { seed: decoded.seed, deck0: decoded.deck0, deck1: decoded.deck1, firstPlayer: decoded.firstPlayer, rules: decoded.rules };
-      let { match: m } = replayMatch(params, knownMoves);
-      for (const mv of decoded.moves.slice(knownMoves.length)) {
-        if (m.game.turn === me) suspicious = true;
-        m = playMatchMove(m, mv.handIndex, mv.cell).match;
-      }
-    } catch {
-      suspicious = true;
-    }
-  }
-
-  if (suspicious && !force) {
-    pendingTamperedToken = token;
-    smsInfoDialog(
-      'Historique de partie modifié',
-      'Ce lien ne prolonge pas la partie enregistrée sur cet appareil : un coup déjà joué a été changé, ou des coups ont été joués à votre place. Il peut s’agir d’une tentative de triche ou d’un mélange entre deux parties.',
-      '<button type="button" class="hud-btn" data-action="force-load-token">Charger quand même</button>',
-    );
-    return;
-  }
-
-  if (me === null) {
-    // Premier lien reçu pour cette partie : on joue le camp dont c'est le tour.
-    me = decoded.game.over ? 1 - decoded.game.turn : decoded.game.turn;
-  }
-
-  config.mode = 'sms';
-  localPlayerIndex = me;
-  selected = null;
-  hoveredCell = null;
-  busy = false;
-  setMatch(decoded.match);
-  rememberSmsState();
-
-  if (decoded.lastMoveResult && !decoded.lastRoundOver) {
-    placed = decoded.moves[decoded.moves.length - 1].cell;
-    flipped = decoded.lastMoveResult.captured || [];
-  }
-
-  navigateTo('game');
-
-  if (game.over) {
-    render();
-    endGame();
-  } else {
-    setMessage(game.turn === localPlayerIndex ? `Coup adverse reçu ! ${turnMessage()}` : turnMessage());
-    render();
-  }
-}
-
-function endGame() {
-  const w = winner(game);
+// Fin de partie. `result` vient du duel à distance : { winner: 0|1|'draw'|null, reason: 'score'|'resign'|'cheat' }.
+function endGame(result = null) {
   const [s0, s1] = score(game);
+  const online = config.mode === 'online';
+  const reason = result?.reason || 'score';
+  const w = result ? result.winner : winner(game);
+  const cancelled = reason === 'cheat';
 
-  stats.played++;
-  if (w === 'draw') {
-    stats.draws++;
-  } else if (w === localPlayerIndex) {
-    stats.wins++;
-    stats.streak++;
-  } else {
-    stats.streak = 0;
+  if (!cancelled) {
+    stats.played++;
+    if (w === 'draw') {
+      stats.draws++;
+    } else if (w === localPlayerIndex) {
+      stats.wins++;
+      stats.streak++;
+    } else {
+      stats.streak = 0;
+    }
+    saveStats();
   }
-  saveStats();
 
   let title;
-  if (w === 'draw') {
+  let detail = '';
+  if (cancelled) {
+    title = 'Partie annulée';
+    detail = `${result.message || 'Une incohérence a été détectée dans le jeu adverse.'} Cette partie ne compte pas dans vos statistiques.`;
+    sound.playEndGame('lose');
+  } else if (w === 'draw') {
     title = 'Égalité Parfaite';
     sound.playEndGame('draw');
   } else if (config.mode !== 'local') {
-    title = w === localPlayerIndex ? 'Victoire Triomphale !' : 'Défaite…';
+    if (reason === 'resign') {
+      title = w === localPlayerIndex ? 'Victoire par abandon' : 'Vous avez abandonné';
+      detail = w === localPlayerIndex ? 'Votre adversaire a abandonné la partie.' : '';
+    } else {
+      title = w === localPlayerIndex ? 'Victoire Triomphale !' : 'Défaite…';
+    }
     sound.playEndGame(w === localPlayerIndex ? 'win' : 'lose');
   } else {
     title = `${playerName(w)} remporte la partie !`;
@@ -1256,19 +1596,18 @@ function endGame() {
 
   const rounds = match?.round || 1;
   const roundsText =
-    rounds > 1
+    rounds > 1 && !cancelled
       ? `Après ${rounds} manches${w === 'draw' ? ` (limite de ${MAX_ROUNDS} manches atteinte)` : ''}.`
       : '';
-
-  const token = getCurrentMatchToken();
-  const { smsHref } = buildShareLinks({ token, scoreText: `Score final ${s0}-${s1}` });
-  const smsFinalBtn =
-    config.mode === 'sms' || config.mode === 'online'
-      ? `<a class="sms-btn" href="${escapeHtml(smsHref)}">💬 Envoyer le résultat par SMS</a>`
-      : '';
-  const canRestart = config.mode !== 'online' || peerSession?.isHost;
+  const canRestart = !online || (net.duel?.role === 'host' && net.state === 'connected');
+  const restartNote = online && !canRestart
+    ? `<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">${
+        net.duel?.role === 'host' ? 'La revanche sera possible une fois reconnectés.' : 'La revanche se lance depuis la table de l’hôte.'
+      }</p>`
+    : '';
 
   setMessage(`${title} (${s0} – ${s1})`);
+  updateNetBar();
   setTimeout(() => {
     showDialog(`
       <h2 class="result">${escapeHtml(title)}</h2>
@@ -1276,22 +1615,39 @@ function endGame() {
       <p style="text-align:center;color:var(--text-muted);margin:0 0 12px;font-size:0.9rem;">
         ${DECKS[matchDecks[0]].badge} ${DECKS[matchDecks[0]].name} &nbsp;contre&nbsp; ${DECKS[matchDecks[1]].badge} ${DECKS[matchDecks[1]].name}
         ${roundsText ? `<br>${roundsText}` : ''}
+        ${detail ? `<br>${escapeHtml(detail)}` : ''}
       </p>
       <div class="dialog-actions">
-        ${smsFinalBtn}
         ${canRestart ? '<button type="button" class="cta-btn" data-action="again">Rejouer</button>' : ''}
         <button type="button" class="hud-btn" data-action="menu">Retour au Salon</button>
       </div>
-      ${canRestart ? '' : '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">La revanche se lance depuis la table de l’hôte.</p>'}
+      ${restartNote}
     `);
   }, 850);
 }
 
-function startMatch() {
-  if (config.mode === 'online' && !peerSession?.isHost) {
-    smsInfoDialog('Seul l’hôte lance la partie', "En duel en direct, c'est l'hôte du salon qui distribue les cartes. Votre plateau s'ouvrira dès qu'il lancera la manche.");
+function startOnlineMatch() {
+  if (net.duel?.role !== 'host' || net.state !== 'connected') {
+    const guest = net.duel?.role === 'guest' && net.state === 'connected';
+    infoDialog(
+      guest ? 'Seul l’hôte lance la partie' : 'Connectez-vous d’abord',
+      guest
+        ? "En duel à distance, c'est l'hôte qui choisit les règles et lance la partie. Votre plateau s'ouvrira automatiquement."
+        : 'Créez une invitation (ou ouvrez celle de votre adversaire) dans le salon, puis attendez la connexion.',
+    );
     return;
   }
+  if (!net.duel.canStart()) {
+    if (game) resumeGame();
+    return;
+  }
+  hideDialog();
+  setMessage('Distribution des mains…');
+  net.duel.hostStart({ rules: { ...config.rules }, deck: config.deck0 }).then(saveDuel);
+}
+
+function startMatch() {
+  if (config.mode === 'online') return startOnlineMatch();
 
   selected = null;
   hoveredCell = null;
@@ -1303,16 +1659,8 @@ function startMatch() {
     const keys = Object.keys(DECKS);
     deck1 = keys[randomInt(keys.length)];
   }
-  // La graine seule détermine les mains et les cases élémentaires : c'est ce qui permet à l'adversaire
-  // distant (P2P ou lien SMS) de reconstruire exactement la même partie.
-  setMatch(createMatch({ seed: generateSeed(), deck0, deck1, firstPlayer: randomInt(2), rules: config.rules }));
+  setMatch(createMatch({ seed: randomUint32(), deck0, deck1, firstPlayer: randomInt(2), rules: config.rules }));
   localPlayerIndex = 0;
-
-  if (config.mode === 'online') sendGameStart();
-  if (config.mode === 'sms') {
-    rememberSmsState();
-    if (typeof history !== 'undefined') history.replaceState(null, '', `?turn=${encodeURIComponent(getCurrentMatchToken())}`);
-  }
 
   navigateTo('game');
 
@@ -1323,7 +1671,6 @@ function startMatch() {
   setMessage(`${opener} ${turnMessage()}`);
   render();
   if (!isHuman(game.turn) && config.mode === 'ai') aiTurn();
-  if (config.mode === 'sms' && game.turn !== localPlayerIndex) setTimeout(() => showShareTurnDialog(), 520);
 }
 
 function showMenu(opts = {}) {
@@ -1451,8 +1798,10 @@ function showCardInspector(card, bonusContext = null) {
   }
 }
 
-function showDialog(html) {
+// `net: true` marque une fenêtre liée à la connexion, refermée automatiquement une fois connectés.
+function showDialog(html, { net: isNetDialog = false } = {}) {
   ui.dialog.innerHTML = html;
+  ui.dialog.dataset.net = isNetDialog ? '1' : '';
   ui.overlay.classList.remove('hidden');
   ui.dialog.querySelector('button')?.focus();
 }
@@ -1472,7 +1821,8 @@ function showRules() {
       <li><strong>Identique (Same) &amp; Plus :</strong> Capture si au moins 2 côtés adjacents ont des valeurs effectives égales (<em>Identique</em>) ou des sommes égales (<em>Plus</em>) aux valeurs opposées.</li>
       <li><strong>Combo (Cascade dynamique) :</strong> Toute carte retournée par <em>Identique</em> ou <em>Plus</em> (ainsi que toute carte alliée dont le bonus de synergie augmente suite à une capture) attaque immédiatement ses voisines avec ses valeurs effectives actualisées.</li>
       <li><strong>Mort Subite :</strong> En cas d'égalité, une nouvelle manche commence aussitôt : chacun reprend les cartes de sa couleur (plateau et main). Jusqu'à ${MAX_ROUNDS} manches au total, après quoi l'égalité est définitive.</li>
-      <li><strong>Duel à distance :</strong> en direct avec un <strong>code de salon à 8 caractères</strong> (relais publics chiffrés puis WebRTC), ou en asynchrone avec un <strong>lien SMS</strong>. Les mains sont distribuées à partir d'une graine partagée : l'interface cache la main adverse, mais un joueur qui lirait le code du jeu pourrait la recalculer. En duel à distance, la main cachée repose donc sur la bonne foi des joueurs.</li>
+      <li><strong>Mur Identique :</strong> avec Identique, un côté de valeur A (10) posé contre le bord du plateau compte comme une égalité.</li>
+      <li><strong>Duel à distance :</strong> l'hôte envoie un <strong>lien d'invitation</strong>, l'invité renvoie un <strong>lien de réponse</strong>, et les deux navigateurs se connectent en direct, sans serveur de jeu. Chacun tire sa main en secret et s'y engage par une empreinte cryptographique : personne ne voit la main de l'autre, et en fin de manche chaque main est vérifiée (une carte qui n'en faisait pas partie annule la partie). Une coupure met la partie en pause ; seul un abandon explicite compte comme une défaite.</li>
     </ul>
     <div class="dialog-actions">
       <button type="button" class="cta-btn" data-action="close">Compris</button>
@@ -1481,17 +1831,13 @@ function showRules() {
 }
 
 // =========================================================================
-// GESTIONNAIRES D'ÉVÉNEMENTS GLOBAUX & PARAMÈTRES D'URL (?room= / ?turn=)
+// GESTIONNAIRES D'ÉVÉNEMENTS GLOBAUX & LIENS DU DUEL (#join= / #reply=)
 // =========================================================================
 document.addEventListener('click', (e) => {
   const modeBtn = e.target.closest('[data-set-mode]');
   if (modeBtn) {
-    config.mode = modeBtn.dataset.setMode;
+    selectMode(modeBtn.dataset.setMode);
     sound.playUiClick();
-    document.querySelectorAll('[data-set-mode]').forEach((b) =>
-      b.classList.toggle('active', b.dataset.setMode === config.mode),
-    );
-    $('diff-selector').classList.toggle('hidden', config.mode !== 'ai');
     renderRemoteSetupBox();
     return;
   }
@@ -1518,10 +1864,11 @@ document.addEventListener('click', (e) => {
   const emoteBtn = e.target.closest('[data-emote]');
   if (emoteBtn) {
     const text = emoteBtn.dataset.emote;
-    if (!EMOTES.includes(text)) return;
+    const index = EMOTES.indexOf(text);
+    if (index < 0) return;
     sound.playUiClick();
     triggerComboBanner([text]);
-    peerSession?.sendSignal({ type: 'game-emote', text });
+    net.link?.send({ t: 'emote', e: index });
     return;
   }
 
@@ -1534,6 +1881,12 @@ document.addEventListener('click', (e) => {
   if (btn.id === 'btn-start-match') {
     sound.playUiClick();
     return startMatch();
+  }
+
+  if (NET_ACTIONS.has(btn.dataset.action)) {
+    sound.playUiClick();
+    handleNetAction(btn.dataset.action, btn).catch((err) => console.error(err));
+    return;
   }
 
   switch (btn.dataset.action) {
@@ -1561,20 +1914,11 @@ document.addEventListener('click', (e) => {
     case 'menu':
       sound.playUiClick();
       return showMenu();
-    case 'share-turn':
-      sound.playUiClick();
-      return showShareTurnDialog();
-    case 'force-load-token': {
-      sound.playUiClick();
-      const token = pendingTamperedToken;
-      pendingTamperedToken = null;
-      return token ? loadMatchFromCompactToken(token, { force: true }) : hideDialog();
-    }
     case 'inspect-selected': {
       sound.playUiClick();
       if (!game) return;
-      const hand = game.hands[game.turn] || [];
-      const cardToInspect = selected !== null && hand[selected] ? hand[selected] : hand[0];
+      const hand = (game.hands[game.turn] || []).filter((c) => !c.hidden);
+      const cardToInspect = selected !== null && game.hands[game.turn][selected] && !game.hands[game.turn][selected].hidden ? game.hands[game.turn][selected] : hand[0];
       if (cardToInspect) showCardInspector(cardToInspect);
       return;
     }
@@ -1648,28 +1992,41 @@ window.addEventListener('beforeinstallprompt', (e) => {
   ui.btnInstall?.classList.remove('hidden');
 });
 
-// Initialisation et lecture automatique d'un lien reçu par SMS / Messagerie (?turn=... ou ?room=...)
+// Initialisation : lien d'invitation (#join=…), lien de réponse (#reply=…) ou duel interrompu à reprendre.
+// Le contenu des liens est placé après « # » : il ne quitte jamais le navigateur.
 renderLobby();
 
-if (typeof window !== 'undefined') {
-  const params = new URLSearchParams(window.location.search);
-  const turnToken = params.get('turn');
-  const roomParam = params.get('room');
-
-  if (turnToken) {
-    document.querySelectorAll('[data-set-mode]').forEach((b) =>
-      b.classList.toggle('active', b.dataset.setMode === 'sms'),
-    );
-    $('diff-selector')?.classList.add('hidden');
-    loadMatchFromCompactToken(turnToken);
-  } else if (roomParam) {
-    document.querySelectorAll('[data-set-mode]').forEach((b) =>
-      b.classList.toggle('active', b.dataset.setMode === 'online'),
-    );
-    $('diff-selector')?.classList.add('hidden');
-    joinPeerRoom(roomParam);
+async function initFromUrl() {
+  const hash = typeof location !== 'undefined' ? location.hash : '';
+  const hasJoin = /[#&]join=/.test(hash);
+  const hasReply = /[#&]reply=/.test(hash);
+  if (hasJoin || hasReply) {
+    try {
+      history.replaceState(null, '', `${location.pathname}${location.search}`);
+    } catch {
+      // Ignore
+    }
   }
+
+  if (!hasReply) {
+    for (const role of DUEL_ROLES) {
+      const saved = readSavedDuel(role);
+      if (!saved) continue;
+      if (await restoreSavedDuel(saved)) net.interrupted ||= saved;
+      else forgetSavedDuel(role);
+    }
+  }
+
+  if (hasJoin) return receiveInviteToken(hash);
+  if (hasReply) return relayReply(hash);
+  if (net.interrupted) {
+    selectMode('online');
+    renderRemoteSetupBox();
+  }
+  return undefined;
 }
+
+initFromUrl().catch((err) => console.error(err));
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});

@@ -83,19 +83,20 @@ Chaque limite identifiée ci-dessus est adressée par une action concrète, stru
 
 ## Partie III — État au 1er novembre 2026 (relecture du code)
 
-Relecture du code par rapport au plan ci-dessus, avec les corrections apportées à l'étape 13 du journal (`travail.md`).
+Relecture du code par rapport au plan ci-dessus, avec les corrections apportées aux étapes 13 et 14 du journal (`travail.md`).
 
 | Point du plan | État | Détail |
 | --- | --- | --- |
 | 4 decks, attributs, illustrations SVG, codex | Fait | — |
 | Élémentaire, Identique, Plus, Combo, Main Ouverte | Fait | — |
-| **Mort Subite** | **Fait à l'étape 13** | Nouvelle règle `sudden` : jusqu'à 5 manches, chacun reprend les cartes de sa couleur. Fonctionne aussi en P2P et par lien SMS. |
+| **Mort Subite** | **Fait à l'étape 13** | Nouvelle règle `sudden` : jusqu'à 5 manches, chacun reprend les cartes de sa couleur. Fonctionne aussi en duel à distance, après vérification des mains. |
+| **Mur Identique** (*Same Wall*) | **Fait à l'étape 14** | Règle `sameWall` : avec Identique, un côté A contre le bord compte comme une égalité. |
 | Aperçu tactique, glisser-déposer, inspecteur | Fait | — |
 | Audio | Fait | — |
 | IA à 3 niveaux | Fait, **corrigé** | Le Grand Maître lisait la main cachée de son adversaire ; il raisonne maintenant sur les cartes possibles d'après l'information publique. Le plan parlait d'alpha-bêta en profondeur 2-3 : c'est un minimax sur 2 demi-coups, sans élagage. |
 | Statistiques `localStorage` | Fait | Relecture des statistiques désormais validée (entiers positifs). |
-| Tests | Fait | 25 tests (match, Mort Subite, codec, filtrage réseau, chiffrement, anti-triche, IA sans triche). |
-| **Découpage de `main.js`** | **Non fait** | `main.js` dépasse 1 600 lignes. Découpage suggéré : `ui/table.js` (rendu et glisser-déposer), `ui/lobby.js` (salon et modes à distance), `ui/codex.js` (codex et inspecteur). |
+| Tests | Fait | Moteur, match, Mort Subite, Mur Identique, liens de connexion, protocole du duel (mains cachées, triche détectée, coupure et reprise, abandon), IA sans triche. |
+| **Découpage de `main.js`** | **Reporté (décision du 1er novembre 2026)** | `main.js` dépasse 2 000 lignes. Découpage suggéré : `ui/table.js` (rendu et glisser-déposer), `ui/lobby.js` (salon et modes à distance), `ui/codex.js` (codex et inspecteur). |
 
 ### Approximations et bugs corrigés à l'étape 13
 
@@ -105,9 +106,18 @@ Relecture du code par rapport au plan ci-dessus, avec les corrections apportées
 4. **Hors ligne** : le service worker renvoyait une promesse vide au lieu de la page d'accueil pour une adresse non mise en cache, et mettait en cache les erreurs. Corrigé.
 5. **Formulations trompeuses** : « sans serveur » (le mode en direct dépend de relais publics tiers et de serveurs STUN), « QR code » (c'est un motif décoratif, pas un code lisible), « alpha-bêta ». Textes corrigés dans l'interface et la documentation.
 
+### Limites levées à l'étape 14
+
+- **Main cachée à distance** : protocole d'engagement (`js/duel.js`). Chacun tire sa main en secret, s'y engage par SHA-256, et tout est vérifié en fin de manche.
+- **Liens SMS non signés** : mode SMS retiré.
+- **Relais publics** : retirés. La mise en relation passe par deux liens échangés par les joueurs, puis connexion WebRTC directe.
+- **Abandon par déconnexion** : une coupure met la partie en pause (reprise par lien, même après rechargement) ; seul un abandon explicite compte.
+- **Mur Identique** : implémenté.
+
 ### Limites restantes, assumées
 
-- **Main cachée à distance** : la graine est connue des deux joueurs, donc un joueur qui lit le code peut recalculer la main adverse. Une vraie main cachée demanderait un protocole d'engagement cryptographique.
-- **Liens SMS non signés** : la détection de réécriture d'historique ne fonctionne qu'à partir du deuxième lien reçu sur un même appareil, et l'initiateur choisit la graine.
-- **Relais publics** : disponibilité non garantie ; ils voient l'existence des salons et les adresses IP de connexion (pas le contenu, chiffré).
-- **Règle « Mur identique » (Same Wall)** de FF8 : non implémentée.
+- **Adresse IP** : chaque joueur voit celle de l'autre, et les serveurs STUN celle de chacun (inhérent à la connexion directe, accepté).
+- **Réseaux très fermés** : sans relais TURN, la connexion peut échouer derrière certains NAT stricts.
+- **Page https obligatoire** pour le duel à distance (GitHub Pages, ou mkcert sur le réseau local).
+- **Aide extérieure** (une IA qui conseille un joueur) : indétectable, risque accepté.
+- **Pas de chronomètre** : un joueur peut laisser traîner une partie ; l'adversaire peut abandonner ou oublier le duel.

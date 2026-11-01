@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <!-- Politique de sécurité : seuls nos propres scripts s'exécutent ; les seules connexions sortantes autorisées
-       sont les relais MQTT de js/network.js (à garder synchronisés). Les styles en ligne restent permis
+  <!-- Politique de sécurité : seuls nos propres scripts s'exécutent, aucune connexion sortante hors de l'origine
+       (la connexion directe WebRTC du duel n'est pas régie par connect-src). Les styles en ligne restent permis
        car l'interface les utilise dans ses gabarits. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' wss://broker.emqx.io:8084 wss://broker.hivemq.com:8884 wss://test.mosquitto.org:8081; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <title>Les Quatre Vents — Jeu de Plateau & Cartes Tactiques</title>
   <meta name="description" content="Jeu de plateau et de cartes tactique sur grille 3x3 avec 4 factions, 100 cartes illustrées et règles avancées.">
@@ -89,10 +89,7 @@
                   <span class="seg-icon">👥</span> 2 Joueurs (Local)
                 </button>
                 <button type="button" class="seg-btn" data-set-mode="online">
-                  <span class="seg-icon">🌐</span> Duel à Distance (P2P)
-                </button>
-                <button type="button" class="seg-btn" data-set-mode="sms">
-                  <span class="seg-icon">💬</span> Duel par SMS / Lien
+                  <span class="seg-icon">🌐</span> Duel à Distance (lien direct)
                 </button>
               </div>
 
@@ -103,7 +100,7 @@
               </div>
             </div>
 
-            <!-- Panneau de connexion P2P / SMS -->
+            <!-- Panneau du duel à distance (invitation / réponse) -->
             <div class="remote-box hidden" id="remote-setup-box"></div>
           </div>
 
@@ -142,6 +139,11 @@
                 <span class="chip-dot"></span>
                 <span class="chip-name">Identique</span>
                 <span class="chip-desc">Égalités doubles</span>
+              </button>
+              <button type="button" class="rule-chip" data-toggle-rule="sameWall" title="Avec Identique : un côté de valeur A (10) posé contre le bord du plateau compte comme une égalité">
+                <span class="chip-dot"></span>
+                <span class="chip-name">Mur Identique</span>
+                <span class="chip-desc">Les bords valent A</span>
               </button>
               <button type="button" class="rule-chip active" data-toggle-rule="plus" title="Capture si au moins 2 côtés adjacents donnent la même somme avec les côtés opposés">
                 <span class="chip-dot"></span>
@@ -185,7 +187,7 @@
           <button type="button" class="hud-btn" data-action="menu" title="Retourner au salon">
             ← Salon
           </button>
-          <button type="button" class="hud-btn" data-action="again" title="Distribuer une nouvelle manche">
+          <button type="button" class="hud-btn" id="btn-again" data-action="again" title="Distribuer une nouvelle manche">
             ↻ Nouvelle Manche
           </button>
         </div>
@@ -196,8 +198,8 @@
           <button type="button" class="hud-btn" id="btn-inspect-selected" data-action="inspect-selected" title="Inspecter la carte sélectionnée en grand format">
             🔍 Inspecter
           </button>
-          <button type="button" class="hud-btn" id="btn-share-turn" data-action="share-turn" title="Envoyer l'état de la partie par SMS ou lien (Fallback universel)">
-            💬 SMS / Lien
+          <button type="button" class="hud-btn hidden" id="btn-resign" data-action="resign" title="Abandonner le duel (compte comme une défaite)">
+            🏳 Abandonner
           </button>
           <div class="active-rules-bar" id="active-rules-bar"></div>
         </div>
@@ -205,7 +207,8 @@
 
       <!-- Barre de statut P2P / Émotes en partie à distance -->
       <div class="net-status-bar hidden" id="net-status-bar">
-        <span class="net-indicator" id="net-indicator">🟢 Connecté en P2P</span>
+        <span class="net-indicator" id="net-indicator">🟢 Connecté en direct</span>
+        <button type="button" class="hud-btn hidden" id="btn-reconnect" data-action="reconnect">🔗 Reconnecter</button>
         <div class="emote-bar">
           <button type="button" class="emote-btn" data-emote="👏 Bien joué !">👏 Bien joué</button>
           <button type="button" class="emote-btn" data-emote="⚡ Quel combo !">⚡ Quel combo</button>

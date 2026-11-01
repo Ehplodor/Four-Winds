@@ -1,15 +1,24 @@
 // Petit serveur statique sans dépendance : node scripts/serve.mjs [port]
-// Il n'écoute que sur cette machine (127.0.0.1). Pour tester depuis un téléphone du réseau local :
-//   HOST=0.0.0.0 node scripts/serve.mjs
-// (le duel en direct exige alors https, car Web Crypto n'est disponible que sur une page sécurisée ou localhost).
-import { createServer } from 'node:http';
+// Il n'écoute que sur cette machine (127.0.0.1). Pour tester depuis un téléphone du réseau local,
+// le duel à distance exige une page https (WebRTC et Web Crypto) : créer un certificat avec mkcert
+// (voir README), puis :
+//   HOST=0.0.0.0 TLS_CERT=certs/cert.pem TLS_KEY=certs/key.pem node scripts/serve.mjs
+import { createServer as createHttpServer } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
 import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const port = Number(process.argv[2] || process.env.PORT || 8080);
 const host = process.env.HOST || '127.0.0.1';
+const tls =
+  process.env.TLS_CERT && process.env.TLS_KEY
+    ? { cert: readFileSync(process.env.TLS_CERT), key: readFileSync(process.env.TLS_KEY) }
+    : null;
+const createServer = (handler) => (tls ? createHttpsServer(tls, handler) : createHttpServer(handler));
+const scheme = tls ? 'https' : 'http';
 const types = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -52,4 +61,4 @@ createServer(async (req, res) => {
   } catch {
     send(res, 404, 'Introuvable');
   }
-}).listen(port, host, () => console.log(`Les Quatre Vents : http://localhost:${port} (écoute sur ${host})`));
+}).listen(port, host, () => console.log(`Les Quatre Vents : ${scheme}://localhost:${port} (écoute sur ${host})`));
