@@ -1,5 +1,5 @@
 // Service worker : met l'application en cache pour jouer hors ligne (les liens d'invitation #join= / #reply= restent côté navigateur).
-const VERSION = 'v9';
+const VERSION = 'v10';
 const CACHE = `quatre-vents-${VERSION}`;
 const ASSETS = [
   './',
