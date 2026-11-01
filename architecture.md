@@ -31,10 +31,11 @@ TCG-FF8/
 │   ├── art.js               # Illustrations SVG procédurales
 │   ├── ai.js                # IA à 3 niveaux
 │   ├── audio.js             # Sons et musique (Web Audio API)
+│   ├── music.js             # Compositeur génératif de la musique (pur, testé)
 │   ├── network.js           # Connexion directe WebRTC, liens d'invitation / réponse, code de vérification
 │   └── main.js              # Interface : salon, table, glisser-déposer, codex, inspecteur, duel à distance
 ├── icons/                   # Icônes PWA
-└── tests/                   # Tests automatisés (node:test) : engine.test.js, duel.test.js
+└── tests/                   # Tests automatisés (node:test) : engine.test.js, duel.test.js, music.test.js
 ```
 
 ---
