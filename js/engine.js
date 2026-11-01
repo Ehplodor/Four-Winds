@@ -5,6 +5,7 @@
 // - Synergie (Résonance élémentaire alliée +1 & Cohésion de faction alliée +1)
 // - Bonus intrinsèques de carte (bonus global ou sideBonuses directionnels)
 // - Identique (Same), Plus et Enchaînement en cascade dynamique (Combo).
+// La Mort Subite (enchaînement de manches en cas d'égalité) est gérée au niveau du match, dans js/match.js.
 
 import { ELEMENT_KEYS } from './cards.js';
 
@@ -26,6 +27,7 @@ export const DEFAULT_RULES = {
   plus: false,
   combo: true,
   open: false,
+  sudden: false,
 };
 
 export function neighbors(cell) {
@@ -64,8 +66,8 @@ export function getElementModifier(card, cellElement, rules) {
  * Calcule l'ensemble des bonus/malus actifs sur une carte donnée.
  * Prend en compte :
  * 1. Bonus/Malus de Case Élémentaire (+1 si même élément, -1 si élément discordant) [règle elemental]
- * 2. Bonus de Résonance Élémentaire Alliée (+1 si au moins 1 voisine alliée a le même élément) [règle synergy ou elemental]
- * 3. Bonus de Cohésion de Faction (+1 si au moins 2 voisines alliées sont du même deck) [règle synergy ou elemental]
+ * 2. Bonus de Résonance Élémentaire Alliée (+1 si au moins 1 voisine alliée a le même élément) [règle synergy]
+ * 3. Bonus de Cohésion de Faction (+1 si au moins 2 voisines alliées sont du même deck) [règle synergy]
  * 4. Bonus intrinsèques éventuels de la carte (card.bonus et card.sideBonuses)
  */
 export function getCardBonuses(card, context = {}, maybeRules = null) {
@@ -214,10 +216,10 @@ function cellSideValue(board, cell, side, boardElements, rules) {
 // sont pris en compte dans Identique, Plus, Capture directe et Combo en cascade.
 export function play(state, handIndex, cell) {
   if (state.over) throw new Error('La partie est terminée');
-  if (cell < 0 || cell >= CELLS || state.board[cell]) throw new Error('Case invalide');
+  if (!Number.isInteger(cell) || cell < 0 || cell >= CELLS || state.board[cell]) throw new Error('Case invalide');
   const player = state.turn;
   const hand = state.hands[player];
-  if (handIndex < 0 || handIndex >= hand.length) throw new Error('Carte invalide');
+  if (!Number.isInteger(handIndex) || handIndex < 0 || handIndex >= hand.length) throw new Error('Carte invalide');
 
   const rules = state.rules || DEFAULT_RULES;
   const boardElements = state.boardElements || Array(CELLS).fill(null);
@@ -400,7 +402,7 @@ export function play(state, handIndex, cell) {
 
 // Prévisualise un coup sans modifier la partie : utile pour l'aperçu tactique au survol d'une case.
 export function previewMove(state, handIndex, cell) {
-  if (state.over || cell < 0 || cell >= CELLS || state.board[cell]) {
+  if (state.over || !Number.isInteger(cell) || cell < 0 || cell >= CELLS || state.board[cell]) {
     return {
       captured: [],
       events: { direct: [], same: [], plus: [], combo: [], tags: [] },
@@ -408,7 +410,7 @@ export function previewMove(state, handIndex, cell) {
     };
   }
   const hand = state.hands[state.turn];
-  if (handIndex === null || handIndex < 0 || handIndex >= hand.length) {
+  if (!Number.isInteger(handIndex) || handIndex < 0 || handIndex >= hand.length) {
     return {
       captured: [],
       events: { direct: [], same: [], plus: [], combo: [], tags: [] },

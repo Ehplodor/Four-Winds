@@ -1,36 +1,47 @@
 import {
-  createGame,
-  play,
   previewMove,
   score,
   winner,
   getEffectiveValues,
   getCardBonuses,
 } from './engine.js';
-import { chooseMove } from './ai.js';
+import { chooseMove, opponentCandidatesFor } from './ai.js';
+import { createMatch, playMatchMove, replayMatch, MAX_ROUNDS } from './match.js';
+import { randomInt } from './rng.js';
 import {
   CARDS,
   DECKS,
   DECK_LIST,
   ELEMENTS,
-  dealHands,
   displayValue,
   renderCardArtSVG,
 } from './cards.js';
 import { sound } from './audio.js';
 import {
-  createSeededRng,
   generateSeed,
   generateRoomCode,
+  normalizeRoomCode,
+  formatRoomCode,
   encodeCompactMatch,
   decodeCompactMatch,
+  matchKey,
+  verifyTokenContinuity,
   buildShareLinks,
+  isRoomCryptoAvailable,
   PeerRoomSession,
   renderShareCardSVG,
+  EMOTES,
 } from './network.js';
 
 const AI_DELAY = 720;
+const SUDDEN_DEATH_DELAY = 1600;
 const $ = (id) => document.getElementById(id);
+
+// Toute donnée qui ne vient pas du code du jeu (URL, saisie, réseau, stockage) doit passer par ici
+// avant d'être insérée dans du HTML.
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+}
 
 const ui = {
   menu: $('menu'),
@@ -78,6 +89,7 @@ let config = {
     plus: true,
     combo: true,
     open: false,
+    sudden: false,
   },
 };
 
@@ -90,19 +102,28 @@ let stats = {
 
 try {
   const savedStats = JSON.parse(localStorage.getItem('qv_stats') || 'null');
-  if (savedStats) stats = { ...stats, ...savedStats };
+  if (savedStats && typeof savedStats === 'object') {
+    for (const k of Object.keys(stats)) {
+      const v = Number(savedStats[k]);
+      if (Number.isInteger(v) && v >= 0) stats[k] = v;
+    }
+  }
 } catch {
   // Ignore
 }
 
+// `match` est l'état complet (graine, coups, manche en cours) ; `game` est la manche affichée.
+// Ils ne diffèrent que pendant la courte transition vers une manche de Mort Subite.
+let match = null;
 let game = null;
 let matchSeed = generateSeed();
 let matchFirstPlayer = 0;
 let matchDecks = ['vents', 'forge'];
 let matchMoves = [];
-let localPlayerIndex = 0; // 0 pour l'hôte / joueur 1, 1 pour l'invité P2P
+let localPlayerIndex = 0; // 0 pour l'hôte / l'initiateur SMS, 1 pour l'invité
 let peerSession = null;
 let currentRoomCode = generateRoomCode();
+let pendingTamperedToken = null;
 
 let selected = null;
 let hoveredCell = null;
@@ -113,6 +134,45 @@ let activeCodexDeck = 'all';
 let deferredInstallPrompt = null;
 let currentScreen = 'menu'; // 'menu' | 'game' | 'codex'
 let previousScreen = 'menu';
+
+function setMatch(next) {
+  match = next;
+  game = next.game;
+  matchSeed = next.seed;
+  matchFirstPlayer = next.firstPlayer;
+  matchDecks = next.decks.slice();
+  matchMoves = next.moves.slice();
+}
+
+function matchParams() {
+  return { seed: matchSeed, deck0: matchDecks[0], deck1: matchDecks[1], firstPlayer: matchFirstPlayer, rules: match?.rules || config.rules };
+}
+
+// Historique local des parties SMS : sert à repérer un lien dont l'historique a été réécrit.
+const SMS_HISTORY_KEY = 'qv_sms_history';
+const SMS_HISTORY_MAX = 30;
+
+function readSmsHistory() {
+  try {
+    const h = JSON.parse(localStorage.getItem(SMS_HISTORY_KEY) || '{}');
+    return h && typeof h === 'object' ? h : {};
+  } catch {
+    return {};
+  }
+}
+
+function rememberSmsState() {
+  if (!match) return;
+  try {
+    const h = readSmsHistory();
+    h[matchKey(matchParams())] = { moves: matchMoves.map((m) => [m.handIndex, m.cell]), me: localPlayerIndex, at: Date.now() };
+    const keys = Object.keys(h).sort((a, b) => (h[b].at || 0) - (h[a].at || 0));
+    for (const k of keys.slice(SMS_HISTORY_MAX)) delete h[k];
+    localStorage.setItem(SMS_HISTORY_KEY, JSON.stringify(h));
+  } catch {
+    // Ignore
+  }
+}
 
 // Navigation centralisée entre les écrans (Salon, Table de jeu, Codex) avec gestion du scroll et de l'historique
 function navigateTo(screen, { pushHistory = true } = {}) {
@@ -163,21 +223,21 @@ function playerName(p) {
     return p === localPlayerIndex ? `Vous (J${p + 1})` : `Adversaire P2P (J${p + 1})`;
   }
   if (config.mode === 'sms') {
-    return p === 0 ? 'Joueur 1 (Initiateur)' : 'Joueur 2 (Invité)';
+    return p === localPlayerIndex ? `Vous (J${p + 1})` : `Adversaire (J${p + 1})`;
   }
   return p === 0 ? 'Joueur 1' : 'Joueur 2';
 }
 
 function isHuman(p) {
   if (config.mode === 'ai') return p === 0;
-  if (config.mode === 'online') return p === localPlayerIndex;
-  return true; // 'local' et 'sms'
+  if (config.mode === 'online' || config.mode === 'sms') return p === localPlayerIndex;
+  return true; // 'local'
 }
 
 function isHandVisible(p) {
   if (config.rules.open) return true;
   if (config.mode === 'ai') return p === 0;
-  if (config.mode === 'online') return p === localPlayerIndex;
+  if (config.mode === 'online' || config.mode === 'sms') return p === localPlayerIndex;
   return game ? game.turn === p : p === 0;
 }
 
@@ -188,7 +248,7 @@ function getCurrentMatchToken() {
     deck0: matchDecks[0],
     deck1: matchDecks[1],
     firstPlayer: matchFirstPlayer,
-    rules: game?.rules || config.rules,
+    rules: match?.rules || config.rules,
     moves: matchMoves,
   });
 }
@@ -425,6 +485,8 @@ function renderRemoteSetupBox() {
     }
     const { url, smsHref, message } = buildShareLinks({ roomCode: currentRoomCode });
     const isConnected = peerSession?.peerConnected;
+    const shownCode = escapeHtml(formatRoomCode(currentRoomCode));
+    const cryptoOk = isRoomCryptoAvailable();
 
     ui.remoteSetupBox.innerHTML = `
       <div class="remote-cols">
@@ -432,19 +494,19 @@ function renderRemoteSetupBox() {
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
             <strong style="color:var(--gold)">Héberger un Salon P2P</strong>
             <span class="p2p-status-badge ${isConnected ? 'connected' : ''}" id="lobby-p2p-badge">
-              ${isConnected ? '🟢 Adversaire connecté !' : '🟡 En attente d’un joueur…'}
+              ${!cryptoOk ? '🔴 Indisponible ici' : isConnected ? '🟢 Adversaire connecté !' : '🟡 En attente d’un joueur…'}
             </span>
           </div>
           <div class="room-code-display">
             ${renderShareCardSVG(currentRoomCode)}
             <div>
-              <div style="font-size:0.74rem;color:var(--text-muted);margin-bottom:4px;">Code de table sans serveur :</div>
-              <div class="room-code-pill">${currentRoomCode}</div>
+              <div style="font-size:0.74rem;color:var(--text-muted);margin-bottom:4px;">Code du salon :</div>
+              <div class="room-code-pill">${shownCode}</div>
             </div>
           </div>
           <div class="remote-actions-row">
             <button type="button" class="hud-btn" id="btn-share-room">📱 Partager</button>
-            <a class="sms-btn" href="${smsHref}">💬 Inviter par SMS</a>
+            <a class="sms-btn" href="${escapeHtml(smsHref)}">💬 Inviter par SMS</a>
             <button type="button" class="hud-btn" id="btn-copy-room">📋 Copier le lien</button>
           </div>
         </div>
@@ -452,14 +514,16 @@ function renderRemoteSetupBox() {
         <div class="remote-card">
           <strong style="color:var(--gold)">Rejoindre le Salon d'un Ami</strong>
           <p style="margin:0;font-size:0.8rem;color:var(--text-muted);">
-            Saisissez le code à 6 caractères communiqué par votre adversaire (ou cliquez directement sur son lien SMS/WhatsApp) :
+            Saisissez le code à 8 caractères communiqué par votre adversaire (ou ouvrez directement son lien) :
           </p>
           <div class="remote-input-row">
-            <input type="text" id="input-join-code" class="modern-input" maxlength="8" placeholder="Ex: ${currentRoomCode}" />
+            <input type="text" id="input-join-code" class="modern-input" maxlength="12" autocomplete="off" spellcheck="false" placeholder="Ex : ABCD-EFGH" />
             <button type="button" class="cta-btn" id="btn-join-room" style="padding:8px 18px;font-size:0.9rem;">Rejoindre</button>
           </div>
           <div style="font-size:0.75rem;color:var(--text-muted);">
-            Connexion directe chiffrée WebRTC + relais WSS publics automatiques. En cas de coupure réseau, bascule possible par SMS à tout moment.
+            ${cryptoOk
+              ? 'La mise en relation passe par des relais publics gérés par des tiers, qui ne voient que des messages chiffrés avec une clé tirée du code. Les deux appareils passent ensuite en connexion directe WebRTC quand le réseau le permet. Ne partagez le code qu’avec votre adversaire.'
+              : 'Le duel en direct a besoin d’une page sécurisée (https:// ou localhost). Utilisez le mode SMS / Lien, ou ouvrez le jeu en https.'}
           </div>
         </div>
       </div>
@@ -486,10 +550,10 @@ function renderRemoteSetupBox() {
     });
 
     $('btn-join-room')?.addEventListener('click', () => {
-      const code = ($('input-join-code')?.value || '').trim().toUpperCase();
-      if (!code) return;
+      const raw = $('input-join-code')?.value || '';
+      if (!raw.trim()) return;
       sound.playUiClick();
-      joinPeerRoom(code);
+      joinPeerRoom(raw);
     });
   } else if (config.mode === 'sms') {
     ui.remoteSetupBox.innerHTML = `
@@ -497,14 +561,14 @@ function renderRemoteSetupBox() {
         <div class="remote-card">
           <strong style="color:var(--gold)">💬 Mode Universel par SMS / Lien Compact</strong>
           <p style="margin:0;font-size:0.82rem;color:var(--text-muted);line-height:1.45;">
-            Jouez à distance avec n'importe quel smartphone <strong>sans aucun serveur ni connexion simultanée</strong>.
-            Chaque coup génère un lien ultra-compact (~22 caractères) contenant toute la partie, prêt à être envoyé en 1 tap par <strong>SMS, WhatsApp ou Signal</strong>.
+            Jouez à distance <strong>sans connexion simultanée</strong> : chaque coup génère un lien court qui contient toute la partie, à envoyer par <strong>SMS, WhatsApp ou Signal</strong>.
+            Le lien n'est ni chiffré ni signé : le jeu repère un historique modifié par rapport à ce qu'il a déjà vu sur cet appareil, mais il ne peut rien vérifier au tout premier lien reçu.
           </p>
         </div>
         <div class="remote-card">
           <strong style="color:var(--gold)">Reprendre un code reçu par SMS</strong>
           <div class="remote-input-row">
-            <input type="text" id="input-sms-token" class="modern-input" placeholder="Coller un code 1.xxx.xxx ou lien…" />
+            <input type="text" id="input-sms-token" class="modern-input" maxlength="400" autocomplete="off" spellcheck="false" placeholder="Coller un code 2.xxx… ou un lien" />
             <button type="button" class="hud-btn" id="btn-load-sms">Charger</button>
           </div>
         </div>
@@ -515,121 +579,150 @@ function renderRemoteSetupBox() {
       const raw = ($('input-sms-token')?.value || '').trim();
       if (!raw) return;
       sound.playUiClick();
-      const extracted = raw.includes('turn=')
-        ? decodeURIComponent(raw.split('turn=')[1].split('&')[0])
-        : raw;
+      let extracted = raw;
+      if (raw.includes('turn=')) {
+        try {
+          extracted = decodeURIComponent(raw.split('turn=')[1].split(/[&#]/)[0]);
+        } catch {
+          extracted = '';
+        }
+      }
       loadMatchFromCompactToken(extracted);
     });
   }
 }
 
+function setPeerBadge(state) {
+  const labels = {
+    deriving: `🟡 Préparation du salon ${formatRoomCode(currentRoomCode)}…`,
+    waiting: `🟡 Salon ${formatRoomCode(currentRoomCode)} en attente…`,
+    connected: '🟢 Adversaire connecté (via relais chiffré)',
+    'connected-webrtc': '🟢 Connecté en WebRTC direct',
+    error: '🔴 Duel en direct indisponible (page non sécurisée)',
+  };
+  const badge = $('lobby-p2p-badge');
+  if (badge) {
+    const ok = state === 'connected' || state === 'connected-webrtc';
+    badge.className = `p2p-status-badge ${ok ? 'connected' : ''}`;
+    badge.textContent = labels[state] || labels.waiting;
+  }
+  if (ui.netIndicator) ui.netIndicator.textContent = `${labels[state] || labels.waiting} — salon ${formatRoomCode(currentRoomCode)}`;
+}
+
+function sendGameStart() {
+  peerSession?.sendSignal({
+    type: 'game-start',
+    seed: matchSeed,
+    deck0: matchDecks[0],
+    deck1: matchDecks[1],
+    firstPlayer: matchFirstPlayer,
+    rules: match.rules,
+    moves: matchMoves,
+  });
+}
+
+function showDesyncDialog(detail) {
+  showDialog(`
+    <h2>Partie désynchronisée</h2>
+    <p style="color:var(--text-muted);line-height:1.5;">${escapeHtml(detail)}</p>
+    <p style="color:var(--text-muted);line-height:1.5;">L'hôte peut relancer une manche depuis le salon. Vous pouvez aussi continuer par SMS / lien.</p>
+    <div class="dialog-actions"><button type="button" class="hud-btn" data-action="close">Fermer</button></div>
+  `);
+}
+
 function initHostPeerSession(roomCode, asHost = true) {
   if (peerSession) peerSession.close();
-  currentRoomCode = roomCode.toUpperCase();
+  currentRoomCode = roomCode;
   localPlayerIndex = asHost ? 0 : 1;
 
   peerSession = new PeerRoomSession({
     roomCode: currentRoomCode,
     isHost: asHost,
-    onStatus: ({ state }) => {
-      const badge = $('lobby-p2p-badge');
-      if (badge) {
-        const ok = state === 'connected' || state === 'connected-webrtc';
-        badge.className = `p2p-status-badge ${ok ? 'connected' : ''}`;
-        badge.textContent = ok
-          ? state === 'connected-webrtc'
-            ? '🟢 Connecté en WebRTC Direct !'
-            : '🟢 Adversaire connecté !'
-          : `🟡 Salon ${currentRoomCode} en attente…`;
-      }
-      if (ui.netIndicator) {
-        ui.netIndicator.textContent =
-          state === 'connected-webrtc'
-            ? `🟢 P2P WebRTC Direct (Salon ${currentRoomCode})`
-            : `🟢 P2P Connecté (Salon ${currentRoomCode})`;
-      }
-    },
+    onStatus: ({ state }) => setPeerBadge(state),
     onPeerJoined: () => {
       sound.playSelectCard();
-      const badge = $('lobby-p2p-badge');
-      if (badge) {
-        badge.className = 'p2p-status-badge connected';
-        badge.textContent = '🟢 Adversaire connecté !';
-      }
       // Si l'hôte a déjà ouvert le plateau, il synchronise immédiatement la partie avec l'invité
-      if (asHost && game && !ui.game.classList.contains('hidden')) {
-        peerSession.sendSignal({
-          type: 'game-start',
-          seed: matchSeed,
-          deck0: matchDecks[0],
-          deck1: matchDecks[1],
-          firstPlayer: matchFirstPlayer,
-          rules: game.rules,
-          moves: matchMoves,
-        });
+      if (asHost && match && config.mode === 'online' && !ui.game.classList.contains('hidden')) {
+        sendGameStart();
       }
     },
     onGameStart: (pkt) => {
       sound.playSelectCard();
       startFromRemotePacket(pkt);
     },
-    onMove: (pkt) => {
-      if (!game || game.over) return;
-      if (game.turn !== localPlayerIndex && typeof pkt.handIndex === 'number' && typeof pkt.cell === 'number') {
+    onMove: function onMove(pkt) {
+      if (config.mode !== 'online' || !match || !game) return;
+      // Pendant une transition (Mort Subite), le coup est mis de côté puis rejoué.
+      if (busy) return void setTimeout(() => onMove(pkt), 300);
+      if (game.turn === localPlayerIndex) return; // pas son tour
+      if (pkt.ply !== matchMoves.length) {
+        if (pkt.ply > matchMoves.length) showDesyncDialog('Un coup de votre adversaire est arrivé dans le désordre ou a été perdu.');
+        return; // coup déjà reçu (doublon) ou futur
+      }
+      try {
         applyMove(pkt.handIndex, pkt.cell, { fromRemote: true });
+      } catch {
+        showDesyncDialog("Le coup reçu n'est pas jouable sur votre plateau.");
       }
     },
     onEmote: (pkt) => {
-      if (pkt.text) {
-        sound.playUiClick();
-        triggerComboBanner([pkt.text]);
-      }
+      sound.playUiClick();
+      triggerComboBanner([pkt.text]);
     },
   });
-  peerSession.start();
+  peerSession.start().catch(() => setPeerBadge('error'));
 }
 
-function joinPeerRoom(code) {
+function joinPeerRoom(rawCode) {
+  const code = normalizeRoomCode(rawCode);
+  if (!code) {
+    showDialog(`
+      <h2>Code de salon invalide</h2>
+      <p style="color:var(--text-muted);line-height:1.5;">Un code de salon compte 8 caractères (lettres et chiffres, sans 0, 1, I ni O), par exemple ABCD-EFGH.</p>
+      <div class="dialog-actions"><button type="button" class="hud-btn" data-action="close">Fermer</button></div>
+    `);
+    return;
+  }
   config.mode = 'online';
   initHostPeerSession(code, false);
   renderRemoteSetupBox();
   showDialog(`
-    <h2>Connexion au Salon ${code}</h2>
+    <h2>Connexion au salon ${escapeHtml(formatRoomCode(code))}</h2>
     <p style="color:var(--text-muted);line-height:1.5;">
-      Recherche de l'hôte du salon <strong>${code}</strong> via WebRTC / Relais P2P…<br>
-      Dès que l'hôte lance la partie (ou si la table est déjà ouverte), le plateau s'ouvrira automatiquement.
+      Recherche de l'hôte du salon…<br>
+      Dès que l'hôte lance la partie (ou si sa table est déjà ouverte), le plateau s'ouvrira automatiquement.
     </p>
     <div class="dialog-actions">
-      <button type="button" class="hud-btn" data-action="close">Patienter dans le Salon</button>
+      <button type="button" class="hud-btn" data-action="close">Patienter dans le salon</button>
     </div>
   `);
 }
 
 function startFromRemotePacket(pkt) {
-  config.mode = 'online';
-  matchSeed = pkt.seed;
-  matchFirstPlayer = pkt.firstPlayer;
-  matchDecks = [pkt.deck0 || 'vents', pkt.deck1 || 'forge'];
-  matchMoves = [];
-
-  const rng = createSeededRng(matchSeed);
-  const hands = dealHands(rng, { deck0: matchDecks[0], deck1: matchDecks[1] });
-  game = createGame({
-    hands,
-    firstPlayer: matchFirstPlayer,
-    rules: pkt.rules || config.rules,
-    rng,
-  });
-
-  if (Array.isArray(pkt.moves)) {
-    for (const m of pkt.moves) {
-      game = play(game, m.handIndex, m.cell).state;
-      matchMoves.push(m);
-    }
+  let replayed;
+  try {
+    replayed = replayMatch(
+      { seed: pkt.seed, deck0: pkt.deck0, deck1: pkt.deck1, firstPlayer: pkt.firstPlayer, rules: pkt.rules },
+      pkt.moves,
+    );
+  } catch {
+    showDesyncDialog("La partie envoyée par l'hôte contient un coup impossible.");
+    return;
   }
+  config.mode = 'online';
+  localPlayerIndex = 1;
+  selected = null;
+  hoveredCell = null;
+  busy = false;
+  setMatch(replayed.match);
 
   navigateTo('game');
   ui.netStatusBar?.classList.remove('hidden');
+  if (game.over) {
+    render();
+    endGame();
+    return;
+  }
   setMessage(turnMessage());
   render();
 }
@@ -698,6 +791,7 @@ function renderActiveRulesBar() {
     ['plus', 'Plus'],
     ['combo', 'Combo'],
     ['open', 'Main Ouverte'],
+    ['sudden', 'Mort Subite'],
   ];
   for (const [key, label] of labels) {
     if (game.rules[key]) {
@@ -706,6 +800,12 @@ function renderActiveRulesBar() {
       tag.textContent = label;
       ui.activeRulesBar.appendChild(tag);
     }
+  }
+  if (match && match.round > 1) {
+    const tag = document.createElement('span');
+    tag.className = 'rule-tag';
+    tag.textContent = `Manche ${match.round}/${MAX_ROUNDS}`;
+    ui.activeRulesBar.appendChild(tag);
   }
 }
 
@@ -750,7 +850,7 @@ function render() {
   renderActiveRulesBar();
   ui.netStatusBar?.classList.toggle('hidden', config.mode !== 'online' && config.mode !== 'sms');
   if (config.mode === 'sms' && ui.netIndicator) {
-    ui.netIndicator.textContent = `💬 Mode SMS / Lien Universel — Coup #${matchMoves.length + 1}/9`;
+    ui.netIndicator.textContent = `💬 Mode SMS / Lien — coup n°${matchMoves.length + 1}`;
   }
 
   for (const p of [0, 1]) {
@@ -880,7 +980,9 @@ function turnMessage() {
       : 'En attente du coup de votre adversaire…';
   }
   if (config.mode === 'sms') {
-    return `${playerName(p)} : jouez votre coup puis envoyez le lien par SMS / Messagerie.`;
+    return p === localPlayerIndex
+      ? 'À vous : jouez votre coup, puis envoyez le lien à votre adversaire.'
+      : "En attente du lien de votre adversaire (bouton « SMS / Lien » pour renvoyer le vôtre).";
   }
   return `${playerName(p)}, à votre tour de jouer.`;
 }
@@ -910,10 +1012,12 @@ function triggerComboBanner(tags) {
 }
 
 function applyMove(handIndex, cell, { fromRemote = false } = {}) {
-  const res = play(game, handIndex, cell);
+  const ply = matchMoves.length;
+  const { match: nextMatch, result: res, roundOver, suddenDeath } = playMatchMove(match, handIndex, cell);
   const totalMod = res.placedBonuses?.totalMod || 0;
-  game = res.state;
-  matchMoves.push({ handIndex, cell });
+  setMatch(nextMatch);
+  // Pendant la transition de Mort Subite, on affiche d'abord le plateau final de la manche.
+  if (suddenDeath) game = roundOver;
   flipped = res.captured;
   placed = cell;
   selected = null;
@@ -921,12 +1025,7 @@ function applyMove(handIndex, cell, { fromRemote = false } = {}) {
 
   // En mode P2P en ligne, transmettre immédiatement le coup à l'adversaire
   if (config.mode === 'online' && !fromRemote && peerSession) {
-    peerSession.sendSignal({
-      type: 'game-move',
-      handIndex,
-      cell,
-      token: getCurrentMatchToken(),
-    });
+    peerSession.sendSignal({ type: 'game-move', handIndex, cell, ply });
   }
 
   sound.playPlaceCard(totalMod);
@@ -938,22 +1037,40 @@ function applyMove(handIndex, cell, { fromRemote = false } = {}) {
     triggerComboBanner(res.events.tags);
   }
 
-  render();
-
-  // Mise à jour de l'URL sans rechargement en mode SMS pour pouvoir partager à tout moment
-  if (config.mode === 'sms' && typeof history !== 'undefined') {
-    const token = getCurrentMatchToken();
-    history.replaceState(null, '', `?turn=${encodeURIComponent(token)}`);
+  // En mode SMS, l'URL suit la partie pour pouvoir la partager à tout moment
+  if (config.mode === 'sms') {
+    rememberSmsState();
+    if (typeof history !== 'undefined') history.replaceState(null, '', `?turn=${encodeURIComponent(getCurrentMatchToken())}`);
   }
 
-  if (game.over) return endGame();
-  setMessage(turnMessage());
-
-  if (config.mode === 'sms' && !fromRemote) {
-    setTimeout(() => showShareTurnDialog(), 520);
+  if (suddenDeath) {
+    busy = true;
+    render();
+    setMessage(`Égalité ! Mort Subite : chacun reprend les cartes de sa couleur pour la manche ${match.round}/${MAX_ROUNDS}.`);
+    const current = match;
+    setTimeout(() => {
+      if (match !== current) return;
+      busy = false;
+      game = match.game;
+      triggerComboBanner([`MORT SUBITE — MANCHE ${match.round}`]);
+      render();
+      afterTurn(fromRemote);
+    }, SUDDEN_DEATH_DELAY);
     return;
   }
 
+  render();
+  if (game.over) return endGame();
+  afterTurn(fromRemote);
+}
+
+// Suite d'un coup : message de tour, envoi du lien en mode SMS, tour de l'IA.
+function afterTurn(fromRemote) {
+  setMessage(turnMessage());
+  if (config.mode === 'sms' && !fromRemote && game.turn !== localPlayerIndex) {
+    setTimeout(() => showShareTurnDialog(), 520);
+    return;
+  }
   if (!isHuman(game.turn) && config.mode === 'ai') aiTurn();
 }
 
@@ -969,7 +1086,9 @@ function aiTurn() {
   setTimeout(() => {
     if (game !== current) return;
     busy = false;
-    const m = chooseMove(game, { difficulty: config.difficulty });
+    // Sans Main Ouverte, l'IA ne connaît de la main adverse que ce qui est public.
+    const opponentCandidates = game.rules.open ? undefined : opponentCandidatesFor(game, 0, matchDecks[0]);
+    const m = chooseMove(game, { difficulty: config.difficulty, opponentCandidates });
     applyMove(m.handIndex, m.cell);
   }, AI_DELAY);
 }
@@ -987,15 +1106,15 @@ function showShareTurnDialog() {
   showDialog(`
     <h2>💬 Envoyer votre coup à distance</h2>
     <p style="color:var(--text-muted);font-size:0.9rem;line-height:1.45;">
-      Toute la partie (plateau, mains, éléments et votre dernier coup) est condensée dans ce code de <strong>${token.length} caractères</strong>.
-      Votre adversaire n'a qu'à toucher le lien dans son SMS ou sa messagerie pour jouer son tour !
+      Toute la partie (plateau, mains, éléments et votre dernier coup) tient dans ce code de <strong>${token.length} caractères</strong>.
+      Votre adversaire n'a qu'à ouvrir le lien pour jouer son tour. Envoyez-le uniquement à lui : quiconque a le lien peut voir la partie.
     </p>
     <div class="room-code-display" style="margin:12px 0;justify-content:center;">
       ${renderShareCardSVG(token)}
-      <div class="room-code-pill" style="font-size:1rem;letter-spacing:0.06em;word-break:break-all;">${token}</div>
+      <div class="room-code-pill" style="font-size:1rem;letter-spacing:0.06em;word-break:break-all;">${escapeHtml(token)}</div>
     </div>
     <div class="dialog-actions">
-      <a class="sms-btn" href="${smsHref}">💬 Envoyer par SMS</a>
+      <a class="sms-btn" href="${escapeHtml(smsHref)}">💬 Envoyer par SMS</a>
       <button type="button" class="cta-btn" id="btn-native-share-turn" style="padding:9px 20px;font-size:0.92rem;">📱 Partager le lien</button>
       <button type="button" class="hud-btn" id="btn-copy-turn-link">📋 Copier le lien</button>
       <button type="button" class="hud-btn" data-action="close">Continuer sur cet écran</button>
@@ -1023,27 +1142,77 @@ function showShareTurnDialog() {
   });
 }
 
-function loadMatchFromCompactToken(token) {
+function smsInfoDialog(title, body, extraButtons = '') {
+  showDialog(`
+    <h2>${escapeHtml(title)}</h2>
+    <p style="color:var(--text-muted);line-height:1.5;">${escapeHtml(body)}</p>
+    <div class="dialog-actions">${extraButtons}<button type="button" class="hud-btn" data-action="close">Fermer</button></div>
+  `);
+}
+
+function loadMatchFromCompactToken(token, { force = false } = {}) {
   const decoded = decodeCompactMatch(token);
   if (!decoded) {
-    showDialog(`
-      <h2>Code de partie invalide</h2>
-      <p style="color:var(--text-muted)">Le lien ou code saisi n'a pas pu être reconnu.</p>
-      <div class="dialog-actions"><button type="button" class="hud-btn" data-action="close">Fermer</button></div>
-    `);
+    smsInfoDialog('Code de partie invalide', "Le lien ou le code saisi n'a pas pu être reconnu, ou il contient un coup impossible.");
     return;
   }
 
-  config.mode = 'sms';
-  matchSeed = decoded.seed;
-  matchFirstPlayer = decoded.firstPlayer;
-  matchDecks = [decoded.deck0, decoded.deck1];
-  matchMoves = decoded.moves;
-  game = decoded.game;
+  // Comparaison avec ce que cet appareil sait déjà de la partie (anti-réécriture d'historique).
+  const known = readSmsHistory()[matchKey(decoded)];
+  const knownMoves = Array.isArray(known?.moves)
+    ? known.moves.filter((m) => Array.isArray(m)).map(([handIndex, cell]) => ({ handIndex, cell }))
+    : null;
+  let me = known && (known.me === 0 || known.me === 1) ? known.me : null;
+  const status = verifyTokenContinuity(knownMoves, decoded.moves);
 
-  if (decoded.lastMoveResult && decoded.moves.length > 0) {
-    const lastMove = decoded.moves[decoded.moves.length - 1];
-    placed = lastMove.cell;
+  if (status === 'stale' && !force) {
+    smsInfoDialog(
+      'Lien déjà dépassé',
+      'Ce lien montre un état plus ancien de la partie que celui enregistré sur cet appareil. Ouvrez le dernier lien reçu de votre adversaire.',
+    );
+    return;
+  }
+
+  let suspicious = status === 'tampered';
+  if (status === 'extends') {
+    // Chaque coup ajouté doit avoir été joué par l'adversaire, à son tour.
+    try {
+      const params = { seed: decoded.seed, deck0: decoded.deck0, deck1: decoded.deck1, firstPlayer: decoded.firstPlayer, rules: decoded.rules };
+      let { match: m } = replayMatch(params, knownMoves);
+      for (const mv of decoded.moves.slice(knownMoves.length)) {
+        if (m.game.turn === me) suspicious = true;
+        m = playMatchMove(m, mv.handIndex, mv.cell).match;
+      }
+    } catch {
+      suspicious = true;
+    }
+  }
+
+  if (suspicious && !force) {
+    pendingTamperedToken = token;
+    smsInfoDialog(
+      'Historique de partie modifié',
+      'Ce lien ne prolonge pas la partie enregistrée sur cet appareil : un coup déjà joué a été changé, ou des coups ont été joués à votre place. Il peut s’agir d’une tentative de triche ou d’un mélange entre deux parties.',
+      '<button type="button" class="hud-btn" data-action="force-load-token">Charger quand même</button>',
+    );
+    return;
+  }
+
+  if (me === null) {
+    // Premier lien reçu pour cette partie : on joue le camp dont c'est le tour.
+    me = decoded.game.over ? 1 - decoded.game.turn : decoded.game.turn;
+  }
+
+  config.mode = 'sms';
+  localPlayerIndex = me;
+  selected = null;
+  hoveredCell = null;
+  busy = false;
+  setMatch(decoded.match);
+  rememberSmsState();
+
+  if (decoded.lastMoveResult && !decoded.lastRoundOver) {
+    placed = decoded.moves[decoded.moves.length - 1].cell;
     flipped = decoded.lastMoveResult.captured || [];
   }
 
@@ -1053,7 +1222,7 @@ function loadMatchFromCompactToken(token) {
     render();
     endGame();
   } else {
-    setMessage(`Coup adverse reçu ! ${turnMessage()}`);
+    setMessage(game.turn === localPlayerIndex ? `Coup adverse reçu ! ${turnMessage()}` : turnMessage());
     render();
   }
 }
@@ -1077,76 +1246,72 @@ function endGame() {
   if (w === 'draw') {
     title = 'Égalité Parfaite';
     sound.playEndGame('draw');
-  } else if (config.mode === 'ai' || config.mode === 'online') {
+  } else if (config.mode !== 'local') {
     title = w === localPlayerIndex ? 'Victoire Triomphale !' : 'Défaite…';
     sound.playEndGame(w === localPlayerIndex ? 'win' : 'lose');
   } else {
-    title = `${playerName(w)} remporte la manche !`;
+    title = `${playerName(w)} remporte la partie !`;
     sound.playEndGame('win');
   }
+
+  const rounds = match?.round || 1;
+  const roundsText =
+    rounds > 1
+      ? `Après ${rounds} manches${w === 'draw' ? ` (limite de ${MAX_ROUNDS} manches atteinte)` : ''}.`
+      : '';
 
   const token = getCurrentMatchToken();
   const { smsHref } = buildShareLinks({ token, scoreText: `Score final ${s0}-${s1}` });
   const smsFinalBtn =
     config.mode === 'sms' || config.mode === 'online'
-      ? `<a class="sms-btn" href="${smsHref}">💬 Envoyer le résultat par SMS</a>`
+      ? `<a class="sms-btn" href="${escapeHtml(smsHref)}">💬 Envoyer le résultat par SMS</a>`
       : '';
+  const canRestart = config.mode !== 'online' || peerSession?.isHost;
 
   setMessage(`${title} (${s0} – ${s1})`);
   setTimeout(() => {
     showDialog(`
-      <h2 class="result">${title}</h2>
+      <h2 class="result">${escapeHtml(title)}</h2>
       <p class="final-score"><span class="s0">${s0}</span> – <span class="s1">${s1}</span></p>
       <p style="text-align:center;color:var(--text-muted);margin:0 0 12px;font-size:0.9rem;">
         ${DECKS[matchDecks[0]].badge} ${DECKS[matchDecks[0]].name} &nbsp;contre&nbsp; ${DECKS[matchDecks[1]].badge} ${DECKS[matchDecks[1]].name}
+        ${roundsText ? `<br>${roundsText}` : ''}
       </p>
       <div class="dialog-actions">
         ${smsFinalBtn}
-        <button type="button" class="cta-btn" data-action="again">Rejouer la Manche</button>
+        ${canRestart ? '<button type="button" class="cta-btn" data-action="again">Rejouer</button>' : ''}
         <button type="button" class="hud-btn" data-action="menu">Retour au Salon</button>
       </div>
+      ${canRestart ? '' : '<p style="text-align:center;color:var(--text-muted);font-size:0.85rem;">La revanche se lance depuis la table de l’hôte.</p>'}
     `);
   }, 850);
 }
 
 function startMatch() {
+  if (config.mode === 'online' && !peerSession?.isHost) {
+    smsInfoDialog('Seul l’hôte lance la partie', "En duel en direct, c'est l'hôte du salon qui distribue les cartes. Votre plateau s'ouvrira dès qu'il lancera la manche.");
+    return;
+  }
+
   selected = null;
   hoveredCell = null;
   busy = false;
-  matchMoves = [];
-  matchSeed = generateSeed();
 
-  const rng = createSeededRng(matchSeed);
   const deck0 = config.deck0 || 'vents';
   let deck1 = config.deck1;
   if (!deck1 || deck1 === 'random') {
     const keys = Object.keys(DECKS);
-    deck1 = keys[Math.floor(rng() * keys.length)];
+    deck1 = keys[randomInt(keys.length)];
   }
-  matchDecks = [deck0, deck1];
+  // La graine seule détermine les mains et les cases élémentaires : c'est ce qui permet à l'adversaire
+  // distant (P2P ou lien SMS) de reconstruire exactement la même partie.
+  setMatch(createMatch({ seed: generateSeed(), deck0, deck1, firstPlayer: randomInt(2), rules: config.rules }));
+  localPlayerIndex = 0;
 
-  matchFirstPlayer = rng() < 0.5 ? 0 : 1;
-  const hands = dealHands(rng, { deck0, deck1 });
-  game = createGame({
-    hands,
-    firstPlayer: matchFirstPlayer,
-    rules: config.rules,
-    rng,
-  });
-
-  if (config.mode === 'online' && peerSession) {
-    localPlayerIndex = peerSession.isHost ? 0 : 1;
-    peerSession.sendSignal({
-      type: 'game-start',
-      seed: matchSeed,
-      deck0,
-      deck1,
-      firstPlayer: matchFirstPlayer,
-      rules: config.rules,
-      moves: [],
-    });
-  } else {
-    localPlayerIndex = 0;
+  if (config.mode === 'online') sendGameStart();
+  if (config.mode === 'sms') {
+    rememberSmsState();
+    if (typeof history !== 'undefined') history.replaceState(null, '', `?turn=${encodeURIComponent(getCurrentMatchToken())}`);
   }
 
   navigateTo('game');
@@ -1158,6 +1323,7 @@ function startMatch() {
   setMessage(`${opener} ${turnMessage()}`);
   render();
   if (!isHuman(game.turn) && config.mode === 'ai') aiTurn();
+  if (config.mode === 'sms' && game.turn !== localPlayerIndex) setTimeout(() => showShareTurnDialog(), 520);
 }
 
 function showMenu(opts = {}) {
@@ -1305,7 +1471,8 @@ function showRules() {
       <li><strong>Synergie (Résonance &amp; Faction) :</strong> Une carte adjacente à au moins une carte alliée du <strong>même élément</strong> gagne <strong>+1 (Résonance)</strong>. Si elle est adjacente à au moins <strong>2 cartes alliées de la même Faction (Deck)</strong>, elle gagne <strong>+1 supplémentaire (Cohésion)</strong>. Tous ces bonus se cumulent et s'appliquent aux règles spéciales et aux combos !</li>
       <li><strong>Identique (Same) &amp; Plus :</strong> Capture si au moins 2 côtés adjacents ont des valeurs effectives égales (<em>Identique</em>) ou des sommes égales (<em>Plus</em>) aux valeurs opposées.</li>
       <li><strong>Combo (Cascade dynamique) :</strong> Toute carte retournée par <em>Identique</em> ou <em>Plus</em> (ainsi que toute carte alliée dont le bonus de synergie augmente suite à une capture) attaque immédiatement ses voisines avec ses valeurs effectives actualisées.</li>
-      <li><strong>Duel à Distance sans serveur (P2P &amp; SMS) :</strong> Affrontez un joueur distant en direct via un simple <strong>Code de Salon à 6 lettres</strong> (WebRTC P2P) ou en mode <strong>SMS / Lien Compact</strong> universel !</li>
+      <li><strong>Mort Subite :</strong> En cas d'égalité, une nouvelle manche commence aussitôt : chacun reprend les cartes de sa couleur (plateau et main). Jusqu'à ${MAX_ROUNDS} manches au total, après quoi l'égalité est définitive.</li>
+      <li><strong>Duel à distance :</strong> en direct avec un <strong>code de salon à 8 caractères</strong> (relais publics chiffrés puis WebRTC), ou en asynchrone avec un <strong>lien SMS</strong>. Les mains sont distribuées à partir d'une graine partagée : l'interface cache la main adverse, mais un joueur qui lirait le code du jeu pourrait la recalculer. En duel à distance, la main cachée repose donc sur la bonne foi des joueurs.</li>
     </ul>
     <div class="dialog-actions">
       <button type="button" class="cta-btn" data-action="close">Compris</button>
@@ -1351,6 +1518,7 @@ document.addEventListener('click', (e) => {
   const emoteBtn = e.target.closest('[data-emote]');
   if (emoteBtn) {
     const text = emoteBtn.dataset.emote;
+    if (!EMOTES.includes(text)) return;
     sound.playUiClick();
     triggerComboBanner([text]);
     peerSession?.sendSignal({ type: 'game-emote', text });
@@ -1396,6 +1564,12 @@ document.addEventListener('click', (e) => {
     case 'share-turn':
       sound.playUiClick();
       return showShareTurnDialog();
+    case 'force-load-token': {
+      sound.playUiClick();
+      const token = pendingTamperedToken;
+      pendingTamperedToken = null;
+      return token ? loadMatchFromCompactToken(token, { force: true }) : hideDialog();
+    }
     case 'inspect-selected': {
       sound.playUiClick();
       if (!game) return;
@@ -1493,7 +1667,7 @@ if (typeof window !== 'undefined') {
       b.classList.toggle('active', b.dataset.setMode === 'online'),
     );
     $('diff-selector')?.classList.add('hidden');
-    joinPeerRoom(roomParam.trim().toUpperCase());
+    joinPeerRoom(roomParam);
   }
 }
 

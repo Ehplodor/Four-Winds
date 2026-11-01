@@ -3,6 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Politique de sécurité : seuls nos propres scripts s'exécutent ; les seules connexions sortantes autorisées
+       sont les relais MQTT de js/network.js (à garder synchronisés). Les styles en ligne restent permis
+       car l'interface les utilise dans ses gabarits. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' wss://broker.emqx.io:8084 wss://broker.hivemq.com:8884 wss://test.mosquitto.org:8081; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
   <title>Les Quatre Vents — Jeu de Plateau & Cartes Tactiques</title>
   <meta name="description" content="Jeu de plateau et de cartes tactique sur grille 3x3 avec 4 factions, 100 cartes illustrées et règles avancées.">
   <meta name="theme-color" content="#090d1a">
@@ -74,7 +79,7 @@
         <!-- Colonne gauche : Configuration du match -->
         <div class="glass-panel setup-panel">
           <div class="panel-section">
-            <h2 class="section-label">1. Mode d'affrontement &amp; Connexion sans serveur</h2>
+            <h2 class="section-label">1. Mode d'affrontement &amp; jeu à distance</h2>
             <div class="segmented-row">
               <div class="segmented" id="mode-selector" role="radiogroup" aria-label="Mode de jeu">
                 <button type="button" class="seg-btn active" data-set-mode="ai">
@@ -98,7 +103,7 @@
               </div>
             </div>
 
-            <!-- Panneau de connexion P2P / SMS sans serveur -->
+            <!-- Panneau de connexion P2P / SMS -->
             <div class="remote-box hidden" id="remote-setup-box"></div>
           </div>
 
@@ -152,6 +157,11 @@
                 <span class="chip-dot"></span>
                 <span class="chip-name">Main Ouverte</span>
                 <span class="chip-desc">Cartes révélées</span>
+              </button>
+              <button type="button" class="rule-chip" data-toggle-rule="sudden" title="En cas d'égalité, nouvelle manche avec les cartes de sa couleur (jusqu'à 5 manches)">
+                <span class="chip-dot"></span>
+                <span class="chip-name">Mort Subite</span>
+                <span class="chip-desc">Pas d'égalité</span>
               </button>
             </div>
           </div>

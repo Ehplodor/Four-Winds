@@ -78,3 +78,36 @@ Chaque limite identifiée ci-dessus est adressée par une action concrète, stru
 | **4** | **Moteur Audio Synthétique Web Audio API (`js/audio.js`)** | Dimension 4 | • Création d'un synthétiseur sonore et musical pur Web Audio API (zéro fichier MP3 lourd, 100% hors-ligne) :<br>  - Effets sonores cristallins et feutrés : survol de carte, prise en main, pose franche sur le plateau, retournement magique de capture, accord montant pour les Combos/*Plus*/*Identique*, carillon de victoire / accord sombre de défaite.<br>  - Ambiance musicale générative douce et mystique (accords arpégés orchestraux/harpe inspirés des tables de cartes de JRPG), activable/désactivable en un clic dans la barre supérieure. |
 | **5** | **Refonte Moderne des Menus, des Interactions & du Codex** | Dimensions 3 & 7 | • **Nouveau Hub d'Accueil moderne** : fini la petite fenêtre rétro à 3 lignes ; place à une interface de salon de jeu élégante (glassmorphism sombre et or, sélection visuelle du mode, des decks avec aperçu des cartes emblématiques, de la difficulté de l'IA et des règles de table en pilules interactives).<br>• **Interactions fluides sur le plateau** :<br>  - Support du **Glisser-Déposer (Drag & Drop)** ET du clic classique.<br>  - **Aperçu tactique en temps réel** : survoler une case avec une carte en main indique immédiatement les captures directes et les déclenchements *Plus* / *Identique*.<br>  - **Inspecteur de carte (Zoom)** : clic sur une carte du codex ou bouton d'inspection pour admirer la carte en grand avec son lore, son élément et son deck.<br>• **Codex / Galerie des Cartes & Statistiques** : écran dédié permettant de filtrer les 4 decks, d'inspecter les 70+ cartes et de consulter son palmarès sauvegardé en `localStorage`. |
 | **6** | **Tests Unitaires Exhaustifs & Mise à jour PWA** | Dimension 8 | • Extension de `tests/engine.test.js` pour tester les 4 decks, l'équilibrage des distributions, les règles *Élémentaire*, *Identique*, *Plus*, *Combo*, la prévisualisation et les 3 niveaux d'IA.<br>• Mise à jour du Service Worker `sw.js` pour inclure les nouveaux modules (`js/audio.js`, etc.). |
+
+---
+
+## Partie III — État au 1er novembre 2026 (relecture du code)
+
+Relecture du code par rapport au plan ci-dessus, avec les corrections apportées à l'étape 13 du journal (`travail.md`).
+
+| Point du plan | État | Détail |
+| --- | --- | --- |
+| 4 decks, attributs, illustrations SVG, codex | Fait | — |
+| Élémentaire, Identique, Plus, Combo, Main Ouverte | Fait | — |
+| **Mort Subite** | **Fait à l'étape 13** | Nouvelle règle `sudden` : jusqu'à 5 manches, chacun reprend les cartes de sa couleur. Fonctionne aussi en P2P et par lien SMS. |
+| Aperçu tactique, glisser-déposer, inspecteur | Fait | — |
+| Audio | Fait | — |
+| IA à 3 niveaux | Fait, **corrigé** | Le Grand Maître lisait la main cachée de son adversaire ; il raisonne maintenant sur les cartes possibles d'après l'information publique. Le plan parlait d'alpha-bêta en profondeur 2-3 : c'est un minimax sur 2 demi-coups, sans élagage. |
+| Statistiques `localStorage` | Fait | Relecture des statistiques désormais validée (entiers positifs). |
+| Tests | Fait | 25 tests (match, Mort Subite, codec, filtrage réseau, chiffrement, anti-triche, IA sans triche). |
+| **Découpage de `main.js`** | **Non fait** | `main.js` dépasse 1 600 lignes. Découpage suggéré : `ui/table.js` (rendu et glisser-déposer), `ui/lobby.js` (salon et modes à distance), `ui/codex.js` (codex et inspecteur). |
+
+### Approximations et bugs corrigés à l'étape 13
+
+1. **Désynchronisation des parties à distance** : l'hôte tirait le deck adverse et le premier joueur avec le même générateur que la distribution, alors que l'invité et le destinataire d'un lien distribuaient avec un générateur neuf. Les deux joueurs voyaient des mains et des cases élémentaires différentes. La distribution découle maintenant uniquement de la graine (`js/match.js`).
+2. **Règles perdues dans les liens SMS** : le masque de règles tenait sur un caractère base 62 ; avec toutes les règles actives (valeur 63), il était remplacé par 0 et la partie reçue n'avait plus aucune règle. Nouveau format de lien `2.` (masque en base 36) ; les liens `1.` restent lisibles.
+3. **Liens malformés** : un lien contenant un coup impossible faisait planter le chargement. Il est désormais refusé proprement.
+4. **Hors ligne** : le service worker renvoyait une promesse vide au lieu de la page d'accueil pour une adresse non mise en cache, et mettait en cache les erreurs. Corrigé.
+5. **Formulations trompeuses** : « sans serveur » (le mode en direct dépend de relais publics tiers et de serveurs STUN), « QR code » (c'est un motif décoratif, pas un code lisible), « alpha-bêta ». Textes corrigés dans l'interface et la documentation.
+
+### Limites restantes, assumées
+
+- **Main cachée à distance** : la graine est connue des deux joueurs, donc un joueur qui lit le code peut recalculer la main adverse. Une vraie main cachée demanderait un protocole d'engagement cryptographique.
+- **Liens SMS non signés** : la détection de réécriture d'historique ne fonctionne qu'à partir du deuxième lien reçu sur un même appareil, et l'initiateur choisit la graine.
+- **Relais publics** : disponibilité non garantie ; ils voient l'existence des salons et les adresses IP de connexion (pas le contenu, chiffré).
+- **Règle « Mur identique » (Same Wall)** de FF8 : non implémentée.

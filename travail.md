@@ -171,3 +171,22 @@ Ce document récapitule, étape par étape et au fil de l'eau, l'analyse, la con
   - Effet **foil animé** réservé aux cartes légendaires (Niv. 5) et désactivé si `prefers-reduced-motion`.
 - **Validation** : `npm test` — **15 / 15 tests réussis**, et contrôle automatisé des 100 SVG (aucun `NaN`/`undefined`, aucun doublon d'identifiant, parsing XML valide).
 - **PWA** : `sw.js` passe en **v7** pour invalider le cache et prendre en compte les nouvelles illustrations et l'habillage CSS.
+
+---
+
+## Étape 13 — Approximations, limites non implémentées et sécurité (Terminé)
+- **Relecture complète** du code par rapport à `limites.md` ; bilan ajouté en Partie III de ce fichier.
+- **Bugs corrigés** :
+  - Parties à distance désynchronisées (mains et cases élémentaires différentes entre l'hôte et l'invité ou le destinataire du lien) : nouveau module **`js/match.js`**, où la graine seule détermine la distribution.
+  - Masque de règles perdu dans les liens quand toutes les règles étaient actives : nouveau **format de lien `2.`** (l'ancien reste lisible).
+  - Liens malformés qui faisaient planter le chargement ; repli hors ligne du service worker (`sw.js` v8).
+- **Mort Subite** : règle `sudden` (jusqu'à 5 manches), puce dans le salon, indicateur de manche, compatible P2P et SMS.
+- **IA Grand Maître** : ne lit plus la main cachée de l'adversaire (`opponentCandidatesFor`).
+- **Sécurité** :
+  - Injection HTML via `?room=` corrigée (`escapeHtml`, validation des codes), **Content-Security-Policy** dans `index.html`.
+  - Salon en direct **chiffré et authentifié** (PBKDF2 → AES-GCM, sujet MQTT dérivé du code), codes de salon de **8 caractères** tirés avec `crypto.getRandomValues` (nouveau module `js/rng.js`).
+  - **Filtrage strict** de chaque message réseau (`sanitizePacket`), pair unique retenu, seul l'hôte distribue, numéro de coup pour détecter les pertes et doublons.
+  - **Anti-triche SMS** : historique local par partie, détection d'un historique réécrit, d'un coup joué à notre place ou d'un lien périmé ; en mode SMS on ne joue plus que son propre camp.
+  - **Serveur local** limité à 127.0.0.1, fichiers cachés (`.git`) refusés, correction d'un contournement du contrôle de dossier et d'un plantage sur URL malformée.
+- **Documentation** : `architecture.md` réécrit (modules actuels, modèle de sécurité et limites connues), README mis à jour.
+- Validation : `npm test` — **25 / 25 tests réussis** ; parties complètes vérifiées dans Chromium (IA avec Mort Subite, duel en direct entre deux onglets, aller-retour de liens SMS avec lien falsifié et lien périmé, chargement hors ligne).

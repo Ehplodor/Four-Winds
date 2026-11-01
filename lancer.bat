@@ -13,7 +13,7 @@ if %errorlevel%==0 (
     pause
     exit /b 1
   )
-  start "Les Quatre Vents - serveur" cmd /k python -m http.server %PORT%
+  start "Les Quatre Vents - serveur" cmd /k python -m http.server %PORT% --bind 127.0.0.1
 )
 
 rem Laisse le temps au serveur de demarrer.

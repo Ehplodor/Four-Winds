@@ -2,12 +2,12 @@
 
 ## 1. Objectif et Vision de l'Application
 
-**Les Quatre Vents** est un jeu de cartes à collectionner et d'affrontement tactique sur grille 3×3, directement inspiré du célèbre mini-jeu *Triple Triad* de **Final Fantasy VIII**, transposé dans un univers original de fantasy.
+**Les Quatre Vents** est un jeu de cartes tactique sur grille 3×3, inspiré du mini-jeu *Triple Triad* de **Final Fantasy VIII** et transposé dans un univers original.
 
-L'objectif technique et produit de l'application est de proposer :
-- Une expérience de jeu immédiate, fluide et accessible sur ordinateur comme sur mobile (Progressive Web App / PWA installable et jouable hors-ligne).
-- Une architecture **zéro dépendance** et **sans étape de build** (JavaScript ES Modules natifs, CSS3 moderne, HTML5 sémantique, Node.js natif pour le serveur de développement et les tests unitaires).
-- Une séparation stricte entre la logique métier pure (le moteur de règles déterministe) et la couche de présentation (DOM, animations, sons, interactions).
+Objectifs techniques :
+- Une expérience immédiate sur ordinateur comme sur mobile (PWA installable et jouable hors ligne).
+- **Zéro dépendance** et **pas d'étape de build** : modules ES natifs, CSS3, HTML5, Node.js natif pour le serveur de développement et les tests.
+- Une séparation stricte entre la logique de jeu pure et déterministe (moteur, match, IA) et la présentation (DOM, animations, sons).
 
 ---
 
@@ -15,105 +15,95 @@ L'objectif technique et produit de l'application est de proposer :
 
 ```text
 TCG-FF8/
-├── index.html               # Point d'entrée HTML unique (SPA à écrans multiples)
-├── manifest.webmanifest     # Métadonnées PWA (installation, icônes, thème)
-├── sw.js                    # Service Worker (stratégie Network-First avec fallback Cache)
-├── package.json             # Scripts npm (start, test) — aucune dépendance externe
-├── lancer.bat               # Script de lancement rapide sous Windows
-├── scripts/
-│   └── serve.mjs            # Serveur HTTP statique minimaliste en Node.js natif
-├── css/
-│   └── style.css            # Feuille de style globale (layout, plateau, cartes, animations, responsive)
+├── index.html               # Point d'entrée unique (écrans Salon / Table / Codex) + Content-Security-Policy
+├── manifest.webmanifest     # Métadonnées PWA
+├── sw.js                    # Service Worker (réseau d'abord, repli sur le cache hors ligne)
+├── package.json             # Scripts npm (start, test) — aucune dépendance
+├── lancer.bat               # Lancement rapide sous Windows (serveur local + navigateur)
+├── scripts/serve.mjs        # Serveur statique Node.js, limité à 127.0.0.1 par défaut
+├── css/style.css            # Styles (plateau, cartes, animations, responsive)
 ├── js/
-│   ├── engine.js            # Moteur de règles pur (état immuable, Élémentaire, Synergie, Identique, Plus, Combo)
-│   ├── cards.js             # Catalogue de 100 cartes, 4 decks thématiques, 8 éléments et distribution des mains
-│   ├── art.js               # Moteur d'illustration SVG multicouche (décors de faction, auras, 33 motifs, particules)
-│   ├── ai.js                # Intelligence artificielle à 3 niveaux (Novice, Tacticien, Grand Maître Minimax)
-│   ├── audio.js             # Synthétiseur Web Audio API (bruitages de plateau et musique générative)
-│   ├── network.js           # Multijoueur sans serveur (WebRTC P2P + Courtiers WSS publics + Codec SMS/URL compact)
-│   └── main.js              # Contrôleur UI moderne (Salon, Table de jeu, Drag & Drop, P2P/SMS, Codex, Inspecteur)
-├── icons/
-│   ├── icon.svg             # Icône vectorielle de l'application
-│   ├── icon-192.png         # Icône PWA 192×192
-│   └── icon-512.png         # Icône PWA 512×512
-└── tests/
-    └── engine.test.js       # Suite de tests automatisés via le runner natif `node:test`
+│   ├── engine.js            # Règles d'une manche : pose, captures, Élémentaire, Synergie, Identique, Plus, Combo
+│   ├── match.js             # Match complet : distribution par graine, enchaînement des manches (Mort Subite)
+│   ├── rng.js               # PRNG déterministe (Mulberry32) et aléatoire cryptographique
+│   ├── cards.js             # 100 cartes, 4 decks, 8 éléments, distribution des mains
+│   ├── art.js               # Illustrations SVG procédurales
+│   ├── ai.js                # IA à 3 niveaux
+│   ├── audio.js             # Sons et musique (Web Audio API)
+│   ├── network.js           # Duel à distance : salon chiffré (relais MQTT + WebRTC) et liens SMS compacts
+│   └── main.js              # Interface : salon, table, glisser-déposer, codex, inspecteur, modes à distance
+├── icons/                   # Icônes PWA
+└── tests/engine.test.js     # Tests automatisés (node:test)
 ```
 
 ---
 
-## 3. Architecture Logique et Rôle des Modules
-
-L'application suit une architecture modulaire en couches unidirectionnelles :
+## 3. Modules
 
 ```text
-  [ index.html / css/style.css ]
-                │
-                ▼
-         [ js/main.js ]  ◄─────── (Audio / Effets / Persistance)
-        /       │       \
-       ▼        ▼        ▼
-[js/cards.js] [js/ai.js] [js/engine.js]
-       │
-       ▼
-  [js/art.js]
+            [ index.html / css/style.css ]
+                          │
+                          ▼
+                    [ js/main.js ] ──► [ js/audio.js ]
+          ┌───────────┬───┴───────┬──────────────┐
+          ▼           ▼           ▼              ▼
+    [js/network.js] [js/ai.js] [js/match.js]  [js/cards.js] ──► [js/art.js]
+          │           │           │
+          └─────┬─────┘           ▼
+                ▼           [js/engine.js]   [js/rng.js]
+          (match / engine)
 ```
 
-### 3.1. `js/engine.js` — Le Moteur de Règles Pur
-- **Responsabilité** : Modéliser l'état d'une partie et appliquer les règles de pose et de capture sur une grille de $3 \times 3$ cases (`SIZE = 3`, `CELLS = 9`).
-- **Indépendance** : Aucune référence à `window`, `document` ou au DOM. Peut tourner à l'identique dans un navigateur ou sous Node.js pour les tests et les simulations d'IA.
-- **Modèle de données** :
-  - **Coordonnées & Voisinage (`DIRS`, `neighbors(cell)`)** : Chaque case (index `0` à `8`) connaît ses voisines orthogonales (Haut `side: 0`, Droite `side: 1`, Bas `side: 2`, Gauche `side: 3`) ainsi que l'indice du côté opposé (`opp`).
-  - **État (`state`)** : Objet immuable contenant :
-    - `board` : tableau de 9 emplacements (`null` ou `{ card, owner }`).
-    - `hands` : tuple de deux tableaux représentant les cartes restantes en main pour le joueur `0` et le joueur `1`.
-    - `turn` : indice du joueur actif (`0` ou `1`).
-    - `over` : booléen indiquant si les 9 cases du plateau sont remplies.
-- **Fonctions clés** :
-  - `createGame({ hands, firstPlayer })` : Initialise un état de jeu propre.
-  - `legalMoves(state)` : Énumère tous les couples `{ handIndex, cell }` jouables au tour courant.
-  - `play(state, handIndex, cell)` : Fonction pure qui retourne `{ state: nextState, captured }` sans muter l'état d'entrée.
-  - `score(state)` : Calcule le score actuel de chaque joueur (cartes possédées sur le plateau + cartes encore en main, total constant égal à 10).
-  - `winner(state)` : Détermine le vainqueur (`0`, `1` ou `'draw'`) une fois la partie terminée.
+### 3.1. `js/engine.js` — Règles d'une manche
+- **Pur** : aucune référence au DOM, exécutable sous Node.js pour les tests et l'IA.
+- **État d'une manche** (immuable) : `board` (9 cases `null` ou `{ card, owner }`), `hands` (mains restantes), `turn`, `over`, `rules`, `boardElements` (élément éventuel de chaque case).
+- **Règles** (`DEFAULT_RULES`, toutes combinables) : `elemental`, `synergy`, `same`, `plus`, `combo`, `open`, `sudden` (cette dernière est appliquée par `match.js`).
+- **Bonus** : `getCardBonuses` additionne le bonus de case élémentaire (+1/−1), la Résonance (+1 si une voisine alliée a le même élément), la Cohésion (+1 si au moins 2 voisines alliées sont de la même faction) et les traits de carte. `getEffectiveValue` borne la valeur entre 1 et 10.
+- **`play(state, handIndex, cell)`** : renvoie `{ state, captured, events, placedBonuses }` sans modifier l'entrée. Ordre : Identique et Plus (évalués sur le plateau juste après la pose), captures directes, puis cascade Combo qui recalcule les bonus de synergie après chaque retournement. Les index invalides (non entiers, hors bornes) lèvent une exception.
+- `previewMove` (aperçu au survol), `legalMoves`, `score` (plateau + main, total 10), `winner`.
 
-### 3.2. `js/cards.js` — Catalogue de Cartes et Distribution
-- **Responsabilité** : Définir le référentiel des cartes et la logique de constitution des mains.
-- **Structure d'une carte (état initial)** :
-  - `id` : identifiant unique (slug).
-  - `name` : nom affiché en français.
-  - `level` : niveau de puissance de `1` à `5` (somme des 4 valeurs croissante : ~13 au N1 jusqu'à ~25 au N5).
-  - `values` : tableau `[haut, droite, bas, gauche]` compris entre `1` et `10` (`10` étant affiché `'A'` via `displayValue(v)`).
-  - `glyph` & `hue` : caractère symbolique Unicode et teinte HSL servant au rendu procédural de l'illustration.
-- **Distribution (`dealHands`)** : Tire aléatoirement 1 carte de chaque niveau (1 à 5) pour chaque joueur sans doublon entre les deux mains, garantissant l'équité mathématique des niveaux.
-- **Illustration** : `renderCardArtSVG(card)` est ré-exporté depuis `js/art.js`, qui compose le SVG final (décor de faction, aura élémentaire, halo de rareté, sujet, particules, cadre).
+### 3.2. `js/match.js` — Match complet et Mort Subite
+- **`createMatch({ seed, deck0, deck1, firstPlayer, rules })`** : un PRNG Mulberry32 initialisé par la graine distribue les mains puis tire les cases élémentaires. **La graine seule détermine la partie** : l'hôte, l'invité P2P et le destinataire d'un lien SMS construisent exactement la même distribution.
+- **`playMatchMove(match, handIndex, cell)`** : joue un coup ; si la manche se termine sur une égalité avec la règle Mort Subite, une nouvelle manche démarre avec les cartes de chaque couleur (`suddenDeathHands`, ordre déterministe), le joueur qui commence alterne, et `roundOver` permet d'afficher le plateau final avant la transition. Au plus `MAX_ROUNDS` (5) manches.
+- **`replayMatch(params, moves)`** : rejoue une liste de coups (utilisé par les liens SMS et la synchronisation P2P).
 
-### 3.2.1. `js/art.js` — Moteur d'Illustration Vectorielle
-- **Responsabilité** : Produire un SVG autonome, déterministe et unique pour chacune des 100 cartes.
-- **Composition en 7 plans** : ciel dégradé, faisceaux de lumière, décor de faction, aura élémentaire, halo de rareté, sujet principal multicouche (33 motifs), particules procédurales et cadre d'orfèvrerie.
-- **Déterminisme** : un hash FNV-1a de l'`id` de la carte alimente un générateur Mulberry32 pour l'inclinaison, les éclats et le filigrane, garantissant un rendu stable entre deux sessions.
+### 3.3. `js/cards.js` et `js/art.js` — Cartes et illustrations
+- 100 cartes (4 decks × 25, 5 par niveau) avec `id`, `name`, `level`, `values [haut, droite, bas, gauche]`, `deck`, `element`, `archetype`, `motif`, `glyph`, `hue`, `lore`.
+- `dealHands(rng, { deck0, deck1 })` : une carte de chaque niveau par joueur, sans doublon entre les deux mains.
+- `art.js` compose un SVG déterministe par carte (décor de faction, aura élémentaire, halo de rareté, sujet, particules, cadre).
 
-### 3.3. `js/ai.js` — Intelligence Artificielle
-- **Responsabilité** : Choisir un coup valide `{ handIndex, cell }` lorsque c'est au tour de l'ordinateur.
-- **Fonctionnement initial** : Algorithme glouton à 1 coup d'avance (`chooseMove`) qui simule chaque coup légal via `play()`, attribue un bonus de `+100` par carte capturée, soustrait une pénalité d'exposition (`exposure`) proportionnelle à la faiblesse des côtés laissés libres face à des cases vides, et ajoute un léger bruit aléatoire pour départager les coups équivalents.
+### 3.4. `js/ai.js` — Intelligence artificielle
+- **Apprenti** : captures immédiates avec beaucoup de bruit aléatoire.
+- **Tacticien** : captures, combos, bonus actifs et exposition des côtés faibles, sur le coup immédiat.
+- **Grand Maître** : minimax sur 2 demi-coups (chaque coup est jugé sur la meilleure réplique adverse), sans élagage alpha-bêta (inutile à cette profondeur).
+- **Information cachée** : sans la règle Main Ouverte, le Grand Maître ne lit pas la main adverse. `opponentCandidatesFor` liste les cartes que l'adversaire peut encore avoir d'après ce qui est public (son deck, les niveaux qu'il n'a pas encore joués, les cartes déjà visibles), et la réplique adverse est évaluée sur cet ensemble. Sans cette liste, il se comporte comme le Tacticien.
 
-### 3.4. `js/main.js` — Interface Utilisateur et Orchestration
-- **Responsabilité** : Gérer les écrans (`#menu`, `#game`, `#overlay`), maintenir l'état de la session courante (`mode`, `game`, `selected`, `busy`), convertir l'état en éléments DOM (`render()`) et orchestrer le tour par tour humain / IA.
-- **Flux d'interaction** :
-  1. Choix du mode dans le menu (`Contre l'IA` ou `2 joueurs (local)`).
-  2. Sélection d'une carte dans la main du joueur actif (`select(i)`).
-  3. Mise en évidence des cases libres du plateau (`.cell.target`).
-  4. Clic sur une case libre (`place(cell)` $\rightarrow$ `applyMove(handIndex, cell)`).
-  5. Déclenchement des animations CSS de pose (`.drop`) et de retournement (`.flip`) sur les cartes capturées.
-  6. Si c'est au tour de l'IA, verrouillage temporaire des entrées (`busy = true`) pendant `AI_DELAY` (750 ms) avant d'exécuter le coup de l'IA.
-  7. En fin de partie (`game.over`), affichage de la modale de résultat avec possibilité de rejouer ou de revenir au menu.
+### 3.5. `js/network.js` — Jeu à distance
+Voir la section 4 pour le modèle de sécurité.
+- **Duel en direct** (`PeerRoomSession`) : code de salon de 8 caractères. La mise en relation passe par trois relais MQTT-over-WSS publics (`PUBLIC_WSS_BROKERS`) et, entre onglets d'un même navigateur, par `BroadcastChannel`. Une fois les deux pairs présentés, l'hôte négocie un `RTCDataChannel` WebRTC direct (serveurs STUN publics de Google et Cloudflare).
+- **Rôles** : l'hôte distribue (`game-start`), l'invité suit. Chaque coup porte son numéro (`ply`) pour détecter un coup perdu ou dupliqué.
+- **Liens SMS compacts** (`?turn=`) : format `2.<graine>.<decks+premier joueur>.<masque de règles>.<coups>`, un caractère par coup. L'ancien format `1.` reste lisible.
 
-### 3.5. `css/style.css` — Système Visuel et Responsive
-- **Approche** : Design piloté par des variables CSS (`--card-w`, `--card-h`, `--p0`, `--p1`, etc.) utilisant `clamp()` pour s'adapter aux différentes tailles d'écran.
-- **Adaptabilité** :
-  - **Desktop / Paysage** : Disposition horizontale (`Main J2` | `Plateau 3×3` | `Main J1`) avec mains empilées verticalement.
-  - **Mobile Portrait (`max-width: 700px`)** : Basculement en disposition verticale (`Main J2 en haut` / `Plateau au centre` / `Main J1 en bas`) avec cartes disposées en éventail horizontal.
-- **Accessibilité** : Support de la navigation clavier (`tabIndex = 0`, touches `Enter` et `Space`), attribut `aria-live="polite"` sur la bannière de message et respect de `prefers-reduced-motion: reduce`.
+### 3.6. `js/main.js` — Interface
+- Écrans Salon / Table / Codex (`navigateTo`, historique du navigateur), rendu du plateau (`render`), glisser-déposer unifié souris/tactile (Pointer Events), aperçu tactique, inspecteur de carte, statistiques en `localStorage`.
+- État : `match` (graine, coups, manche courante) et `game` (manche affichée).
+- Toute donnée externe (URL, saisie, réseau, stockage) insérée dans du HTML passe par `escapeHtml`.
 
-### 3.6. Couche PWA & Serveur (`sw.js`, `manifest.webmanifest`, `scripts/serve.mjs`)
-- **PWA** : Le Service Worker met en cache toutes les ressources statiques dès l'installation (`install`) et applique une stratégie *Network-First* avec repli sur le cache en mode hors-ligne (`fetch`).
-- **Serveur local** : `scripts/serve.mjs` sert les fichiers statiques avec les bons types MIME et protège contre la traversée de répertoires (`path traversal`).
+### 3.7. PWA et serveur local
+- `sw.js` : met en cache l'application à l'installation, sert le réseau d'abord, et hors ligne retombe sur la page d'accueil en cache (y compris pour les liens `?turn=` / `?room=`). Seules les réponses valides de l'origine sont mises en cache, sans les paramètres d'URL.
+- `scripts/serve.mjs` : écoute sur 127.0.0.1 (variable `HOST` pour l'ouvrir au réseau local), refuse les fichiers cachés (`.git`…) et la sortie du dossier, envoie des en-têtes de sécurité.
+
+---
+
+## 4. Sécurité et limites connues
+
+| Sujet | Protection en place | Ce qui reste possible |
+| --- | --- | --- |
+| Injection HTML / XSS | `escapeHtml` sur toute donnée externe ; codes de salon et liens validés par liste blanche ; Content-Security-Policy (`script-src 'self'`, connexions limitées aux relais). | La CSP autorise les styles en ligne (`'unsafe-inline'` pour `style-src`), utilisés par les gabarits. |
+| Relais MQTT publics | Messages chiffrés et authentifiés en AES-GCM avec une clé dérivée du code (PBKDF2-SHA-256, 150 000 itérations) ; sujet dérivé du code. Les relais ne voient ni le code, ni les coups, ni les adresses IP de WebRTC. | Les relais voient qu'un salon existe, quand et depuis quelles adresses IP on s'y connecte. Ils peuvent bloquer ou retarder les messages. Ce sont des services de test gratuits, sans garantie de disponibilité. |
+| Intrus dans un salon | Sans le code, impossible de produire un message valide. Avec le code, le premier pair du rôle opposé est retenu, les autres sont ignorés ; seul l'hôte peut distribuer. | Quelqu'un qui obtient le code avant l'adversaire peut prendre sa place. Le code est à transmettre en privé. |
+| Messages reçus | `sanitizePacket` filtre chaque type de message (champs connus, bornes, taille ≤ 16 Ko, horodatage ±10 min) ; coups rejoués dans un `try/catch`. | — |
+| Duel en direct hors HTTPS | Web Crypto exige une page sécurisée : le mode est désactivé avec un message explicite. | Le jeu ouvert depuis l'adresse IP locale d'un PC (http://192.168…) ne peut pas faire de duel en direct ; passer par HTTPS (GitHub Pages) ou utiliser le mode SMS. |
+| Liens SMS | Validation stricte du format et des coups ; historique local par partie : un lien qui modifie un coup déjà vu, ajoute un coup joué à notre place ou revient en arrière est signalé. | Le lien n'est ni chiffré ni signé : rien n'est vérifiable au premier lien reçu, et l'initiateur choisit la graine (il pourrait en essayer plusieurs pour obtenir une bonne main). |
+| Main cachée à distance | L'interface n'affiche pas la main adverse. | La distribution découle d'une graine connue des deux joueurs : un joueur qui lit le code peut recalculer la main adverse. Une vraie main cachée demanderait un protocole d'engagement cryptographique (non implémenté). |
+| Serveur local | 127.0.0.1 uniquement, fichiers cachés refusés, en-têtes `nosniff` / `no-referrer` / `DENY`. | Le repli Python de `lancer.bat` (`http.server`) n'a pas ces filtres, mais n'écoute aussi que sur 127.0.0.1. |

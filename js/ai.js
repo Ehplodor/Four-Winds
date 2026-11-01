@@ -1,7 +1,12 @@
 // Intelligence Artificielle multi-niveaux :
 // - 'novice'    : Apprenti (heuristique légère avec bruit élevé)
 // - 'tactician' : Tacticien (évaluation complète des captures, éléments, synergies, coins et exposition)
-// - 'master'    : Grand Maître (recherche Minimax Alpha-Bêta anticipant la meilleure réplique adverse)
+// - 'master'    : Grand Maître (minimax sur 2 demi-coups : chaque coup est jugé sur la meilleure réplique adverse)
+//
+// Information cachée : sans la règle Main Ouverte, l'IA ne doit pas lire la main adverse.
+// Le Grand Maître modélise alors la réplique adverse avec `opponentCandidates`, la liste des cartes que
+// l'adversaire peut encore avoir d'après ce qui est public (son deck et les niveaux qu'il n'a pas encore joués).
+// Sans cette liste, il retombe sur le Tacticien plutôt que de tricher.
 
 import {
   legalMoves,
@@ -12,6 +17,7 @@ import {
   getCardBonuses,
   DEFAULT_RULES,
 } from './engine.js';
+import { getCardsByDeck } from './cards.js';
 
 function exposurePenalty(state, cell, card, owner = null) {
   const rules = state.rules || DEFAULT_RULES;
@@ -60,15 +66,28 @@ function evaluateBoard(state, player) {
   return total;
 }
 
+// Cartes que l'adversaire peut encore avoir en main, d'après l'information publique :
+// son deck, et les niveaux qu'il lui reste à jouer (une carte par niveau est distribuée, et chaque carte posée
+// révèle son niveau, donc les niveaux restants sont connus). Les cartes déjà visibles sont exclues.
+// En Mort Subite, la main mêle des cartes déjà vues : l'approximation reste prudente (elle surestime le choix adverse).
+export function opponentCandidatesFor(state, opponent, deckId) {
+  const visible = new Set(state.hands[1 - opponent].map((c) => c.id));
+  for (const slot of state.board) if (slot) visible.add(slot.card.id);
+  const levels = new Set(state.hands[opponent].map((c) => c.level));
+  return getCardsByDeck(deckId).filter((c) => levels.has(c.level) && !visible.has(c.id));
+}
+
 export function chooseMove(state, rngOrOptions = Math.random, maybeDifficulty = 'tactician') {
   let rng = Math.random;
   let difficulty = maybeDifficulty;
 
+  let opponentCandidates = null;
   if (typeof rngOrOptions === 'function') {
     rng = rngOrOptions;
   } else if (rngOrOptions && typeof rngOrOptions === 'object') {
     if (typeof rngOrOptions.rng === 'function') rng = rngOrOptions.rng;
     if (rngOrOptions.difficulty) difficulty = rngOrOptions.difficulty;
+    if (Array.isArray(rngOrOptions.opponentCandidates)) opponentCandidates = rngOrOptions.opponentCandidates;
   } else if (typeof rngOrOptions === 'string') {
     difficulty = rngOrOptions;
   }
@@ -94,8 +113,10 @@ export function chooseMove(state, rngOrOptions = Math.random, maybeDifficulty = 
     return best;
   }
 
-  // Niveau 3 : Grand Maître (Minimax profondeur 2)
-  if (difficulty === 'master') {
+  // Niveau 3 : Grand Maître (minimax sur 2 demi-coups)
+  const handHidden = !(state.rules || DEFAULT_RULES).open;
+  if (difficulty === 'master' && (!handHidden || opponentCandidates?.length)) {
+    const opponent = 1 - player;
     let bestMove = moves[0];
     let bestVal = -Infinity;
 
@@ -112,10 +133,12 @@ export function chooseMove(state, rngOrOptions = Math.random, maybeDifficulty = 
       if (next.over) {
         replyValue = evaluateBoard(next, player) * 2;
       } else {
-        const oppMoves = legalMoves(next);
+        // Main cachée : on remplace la vraie main adverse par les cartes qu'elle peut encore contenir.
+        const modeled = handHidden ? { ...next, hands: next.hands.map((h, i) => (i === opponent ? opponentCandidates : h)) } : next;
+        const oppMoves = legalMoves(modeled);
         let worstForMe = Infinity;
         for (const om of oppMoves) {
-          const { state: afterOpp } = play(next, om.handIndex, om.cell);
+          const { state: afterOpp } = play(modeled, om.handIndex, om.cell);
           const val = evaluateBoard(afterOpp, player);
           if (val < worstForMe) worstForMe = val;
         }
