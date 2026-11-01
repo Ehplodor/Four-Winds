@@ -728,12 +728,20 @@ button, select, input {
   background: rgba(242, 212, 107, 0.15);
 }
 
+/* Hauteur fixe de 2 lignes : un message long ne décale plus jamais le plateau */
 .turn-banner {
   flex: 1;
   min-width: 240px;
-  max-width: 520px;
+  max-width: 560px;
+  box-sizing: border-box;
+  height: calc(2.5em + 14px);
+  line-height: 1.25;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
   text-align: center;
-  padding: 9px 18px;
+  padding: 7px 18px;
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(16, 23, 44, 0.4), rgba(24, 36, 72, 0.92), rgba(16, 23, 44, 0.4));
   border: 1px solid rgba(242, 212, 107, 0.35);
@@ -776,7 +784,8 @@ button, select, input {
   background: rgba(12, 18, 36, 0.68);
   border: 1px solid rgba(255, 255, 255, 0.1);
   transition: border-color 0.25s, box-shadow 0.25s;
-  min-width: calc(var(--card-w) + 46px);
+  /* Taille des cartes en main : un peu plus petites que celles du plateau pour tenir sur 2 colonnes */
+  --hand-card-w: calc(var(--card-w) * 0.86);
 }
 
 .side.active-turn.side-0 {
@@ -857,18 +866,24 @@ button, select, input {
   border-color: rgba(240, 89, 135, 0.45);
 }
 
-/* Main empilée en cascade */
+/* Main en grille de 2 colonnes : aucune carte n'en recouvre une autre (lecture et sélection faciles).
+   5 cartes = 3 rangées, la dernière centrée ; la hauteur réservée ne bouge pas quand la main se vide. */
 .hand {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: var(--card-w);
-  min-height: calc(var(--card-h) * 2.85);
+  --card-w: var(--hand-card-w);
+  --card-h: calc(var(--card-w) * 1.28);
+  display: grid;
+  grid-template-columns: repeat(2, var(--card-w));
+  grid-auto-rows: var(--card-h);
+  gap: var(--gap);
+  justify-content: center;
+  align-content: start;
+  min-height: calc(var(--card-h) * 3 + var(--gap) * 2 + 8px);
   padding: 4px 0;
 }
 
-.hand .card + .card {
-  margin-top: calc(var(--card-h) * -0.52);
+.hand .card:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+  justify-self: center;
 }
 
 .hand .card.playable {
@@ -905,18 +920,21 @@ button, select, input {
   cursor: grabbing;
 }
 
-.side-0 .hand { --nudge: -16px; }
-.side-1 .hand { --nudge: 16px; }
+@media (hover: hover) {
+  .hand .card.playable:hover {
+    transform: translateY(-3px) scale(1.03);
+    z-index: 5;
+  }
+}
 
-.hand .card.playable:hover,
 .hand .card.playable:focus-visible {
-  transform: translateX(var(--nudge)) translateY(-4px) scale(1.04);
+  transform: translateY(-3px) scale(1.03);
   outline: none;
   z-index: 5;
 }
 
 .hand .card.selected {
-  transform: translateX(calc(var(--nudge) * 1.65)) scale(1.07);
+  transform: translateY(-5px) scale(1.06);
   z-index: 6;
   box-shadow: 0 0 0 2px var(--gold), 0 0 22px rgba(242, 212, 107, 0.75);
 }
@@ -2825,45 +2843,44 @@ body {
     max-width: 92vw;
   }
 
-  /* Mains horizontales en éventail ergonomique pour le pouce */
+  /* Mains horizontales côte à côte, sans chevauchement : 5 cartes tiennent dans la largeur */
   .hand {
+    display: flex;
     flex-direction: row;
     width: 100%;
-    min-height: 0;
+    gap: clamp(3px, 1vw, 6px);
     justify-content: center;
     padding: 2px 0;
-    --card-w: clamp(56px, min(18.2vw, 10.2dvh), 82px);
+    --card-w: clamp(52px, min(calc((100vw - 64px) / 5), 10.2dvh), 82px);
     --card-h: calc(var(--card-w) * 1.26);
+    min-height: calc(var(--card-h) + 4px);
   }
 
   .hand .card {
+    flex: 0 0 auto;
     width: var(--card-w);
     height: var(--card-h);
   }
 
-  .hand .card + .card {
-    margin-top: 0;
-    margin-left: calc(var(--card-w) * -0.14);
-  }
-
   /* La main adverse en haut peut être légèrement plus compacte que la main du joueur en bas */
   .side-1 .hand {
-    --card-w: clamp(46px, min(15vw, 8.2dvh), 68px);
+    --card-w: clamp(44px, min(15vw, 8.2dvh), 68px);
     --card-h: calc(var(--card-w) * 1.24);
   }
 
-  .side-0 .hand, .side-1 .hand {
-    --nudge: 0px;
-  }
-
-  .side-0 .hand .card.playable:hover,
+  .side-0 .hand .card.playable:focus-visible,
   .side-0 .hand .card.selected {
-    transform: translateY(-10px) scale(1.08);
+    transform: translateY(-8px) scale(1.05);
   }
 
-  .side-1 .hand .card.playable:hover,
+  .side-1 .hand .card.playable:focus-visible,
   .side-1 .hand .card.selected {
-    transform: translateY(8px) scale(1.06);
+    transform: translateY(6px) scale(1.05);
+  }
+
+  @media (hover: hover) {
+    .side-0 .hand .card.playable:hover { transform: translateY(-4px) scale(1.03); }
+    .side-1 .hand .card.playable:hover { transform: translateY(4px) scale(1.03); }
   }
 
   /* Lisibilité renforcée des chiffres de cartes sur mobile */
@@ -2927,6 +2944,7 @@ body {
   }
 
   .turn-banner {
+    min-width: 200px;
     padding: 5px 12px;
     font-size: 0.82rem;
   }
@@ -2944,17 +2962,117 @@ body {
   .board-frame {
     padding: 7px;
   }
+}
 
-  .hand {
-    min-height: calc(var(--card-h) * 2.4);
-  }
+/* =========================================================================
+   BANDEAU DE MESSAGE, BOUTON D'AIDE ET AURAS DES CASES INTÉRESSANTES
+   ========================================================================= */
 
-  .hand .card + .card {
-    margin-top: calc(var(--card-h) * -0.58);
+/* Texte du bandeau : 2 lignes au plus, coupé proprement (texte complet en infobulle) */
+.turn-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* Bouton Aides : allumé quand l'aide est active, éteint sinon */
+.hud-toggle[aria-pressed="true"] {
+  border-color: rgba(232, 190, 110, 0.6);
+  box-shadow: inset 0 -1px 0 var(--neon);
+}
+
+.hud-toggle.muted {
+  opacity: 0.55;
+  filter: grayscale(1);
+}
+
+/* Aura : un halo doux qui émane de la case. Seule l'opacité est animée (compositeur, sans repeindre
+   ni recalculer d'ombre), conformément aux choix de performance mobile du thème. */
+.hint-aura {
+  --aura: 232, 190, 110;
+  --k: 0.75;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(circle closest-side, rgba(var(--aura), calc(0.5 * var(--k))) 0%, rgba(var(--aura), calc(0.2 * var(--k))) 60%, rgba(var(--aura), calc(0.06 * var(--k))) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--aura), calc(0.7 * var(--k))),
+    inset 0 0 26px rgba(var(--aura), calc(0.55 * var(--k))),
+    0 0 20px rgba(var(--aura), calc(0.5 * var(--k)));
+  will-change: opacity;
+  animation: hintBreath 2.8s ease-in-out infinite;
+}
+
+.hint-aura.hint-s2 { --k: 0.9; }
+.hint-aura.hint-s3 { --k: 1; }
+
+/* Identique / Plus / Combo : lumière néon, la plus marquée */
+.hint-aura.hint-special {
+  --aura: 143, 230, 255;
+  --k: 1;
+}
+
+/* Simple bonus (case élémentaire, Résonance, Faction) : à peine un voile */
+.hint-aura.hint-bonus {
+  --aura: 150, 225, 170;
+  --k: 0.5;
+}
+
+@keyframes hintBreath {
+  0%, 100% { opacity: 0.65; }
+  50% { opacity: 1; }
+}
+
+/* Petite pastille en bas de la case : nombre de prises ou règle déclenchée */
+.hint-chip {
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  max-width: calc(100% - 8px);
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-family: var(--font-hud, inherit);
+  font-size: clamp(0.56rem, calc(var(--card-w) * 0.1), 0.74rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  color: #1a1206;
+  background: rgba(232, 190, 110, 0.92);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+
+.hint-chip.hint-special {
+  color: #04161c;
+  background: rgba(143, 230, 255, 0.92);
+}
+
+.hint-chip.hint-bonus {
+  color: #0b1a10;
+  background: rgba(150, 225, 170, 0.85);
+}
+
+/* Petits écrans : boutons du HUD réduits à leur icône pour garder une seule rangée */
+@media (max-width: 480px) {
+  .hud-btn .btn-label {
+    display: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .hint-aura {
+    animation: none;
+    opacity: 0.85;
+  }
   .card.drop, .card.flip, .cell.target, .combo-banner,
   .card.level-5 .art::after,
   .orb-1, .cta-btn::after {

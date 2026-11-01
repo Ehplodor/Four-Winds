@@ -68,6 +68,7 @@ Le duel à distance a besoin d'une page **https** (ou `localhost`), car les navi
 | `js/rng.js` | Aléatoire déterministe (parties rejouables) et cryptographique (graines, codes) |
 | `js/cards.js` | Catalogue des 100 cartes, 4 decks, 8 éléments et générateur SVG |
 | `js/ai.js` | IA à 3 niveaux (*Apprenti*, *Tacticien*, *Grand Maître* minimax, sans lire la main cachée) |
+| `js/hints.js` | Aide tactique : repère les cases intéressantes (prise, Identique, Plus, Combo, bonus) pour la carte choisie |
 | `js/audio.js` | Synthétiseur sonore et musical Web Audio API |
 | `js/network.js` | Connexion directe WebRTC, liens d'invitation et de réponse, code de vérification |
 | `js/main.js` | Contrôleur d'interface, Salon, Plateau, Drag & Drop et Codex |

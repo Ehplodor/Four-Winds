@@ -30,6 +30,7 @@ TCG-FF8/
 │   ├── cards.js             # 100 cartes, 4 decks, 8 éléments, distribution des mains
 │   ├── art.js               # Illustrations SVG procédurales
 │   ├── ai.js                # IA à 3 niveaux
+│   ├── hints.js             # Aide tactique : cases intéressantes pour la carte choisie
 │   ├── audio.js             # Sons et musique (Web Audio API)
 │   ├── network.js           # Connexion directe WebRTC, liens d'invitation / réponse, code de vérification
 │   └── main.js              # Interface : salon, table, glisser-déposer, codex, inspecteur, duel à distance

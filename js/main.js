@@ -6,6 +6,7 @@ import {
   getCardBonuses,
 } from './engine.js';
 import { chooseMove, opponentCandidatesFor } from './ai.js';
+import { analyzeMoves } from './hints.js';
 import { createMatch, playMatchMove, MAX_ROUNDS } from './match.js';
 import { randomInt, randomUint32 } from './rng.js';
 import {
@@ -66,6 +67,7 @@ const ui = {
   btnInstall: $('btn-install'),
   btnSfx: $('btn-sfx'),
   btnMusic: $('btn-music'),
+  btnHints: $('btn-hints'),
   overlay: $('overlay'),
   dialog: $('dialog'),
 };
@@ -119,6 +121,13 @@ let localPlayerIndex = 0; // en duel à distance : 0 pour l'hôte, 1 pour l'invi
 
 let selected = null;
 let hoveredCell = null;
+// Aide tactique (auras sur les cases intéressantes), activée par défaut et mémorisée sur l'appareil.
+let hintsEnabled = true;
+try {
+  hintsEnabled = localStorage.getItem('qv_hints') !== 'off';
+} catch {
+  // Ignore
+}
 let busy = false;
 let flipped = [];
 let placed = null;
@@ -361,6 +370,7 @@ function attachTactilePlayableEvents(el, handIndex, card, owner) {
       ui.board.querySelectorAll('.cell').forEach((c, idx) => {
         if (!game.board[idx]) c.classList.add('target');
       });
+      applyHints();
 
       el.classList.add('dragging-source');
       ghostEl = cardEl(card, owner);
@@ -1428,11 +1438,52 @@ function render() {
 
   flipped = [];
   placed = null;
+  applyHints();
   updatePreviewHighlights();
 }
 
+// Aura douce sur chaque case libre intéressante pour la carte sélectionnée (prise, Identique / Plus / Combo,
+// bonus de case ou de synergie). Les cases sont reconstruites à chaque rendu ; pendant un glisser, on la
+// réapplique sur les cases existantes.
+function applyHints() {
+  ui.board.querySelectorAll('.hint-aura, .hint-chip').forEach((n) => n.remove());
+  ui.btnHints?.classList.toggle('muted', !hintsEnabled);
+  ui.btnHints?.setAttribute('aria-pressed', String(hintsEnabled));
+  if (!hintsEnabled || selected === null || busy || !game || game.over || !isHuman(game.turn)) return;
+  const hints = analyzeMoves(game, selected);
+  const cells = ui.board.querySelectorAll('.cell');
+  hints.forEach((hint, idx) => {
+    const cellEl = cells[idx];
+    if (!hint || !cellEl) return;
+    const aura = document.createElement('div');
+    aura.className = `hint-aura hint-${hint.kind} hint-s${hint.strength}`;
+    aura.setAttribute('aria-hidden', 'true');
+    const chip = document.createElement('div');
+    chip.className = `hint-chip hint-${hint.kind}`;
+    chip.textContent = hint.label;
+    chip.title = hint.detail;
+    cellEl.append(aura, chip);
+    cellEl.setAttribute('aria-label', `Case ${idx + 1} : ${hint.detail}`);
+  });
+}
+
+function toggleHints() {
+  hintsEnabled = !hintsEnabled;
+  try {
+    localStorage.setItem('qv_hints', hintsEnabled ? 'on' : 'off');
+  } catch {
+    // Ignore
+  }
+  applyHints();
+}
+
+// Le bandeau garde une hauteur fixe (2 lignes au plus) : le texte complet reste lisible en infobulle.
 function setMessage(text) {
-  ui.message.textContent = text;
+  const span = document.createElement('span');
+  span.className = 'turn-text';
+  span.textContent = text;
+  ui.message.replaceChildren(span);
+  ui.message.title = text;
 }
 
 function turnMessage() {
@@ -1460,7 +1511,7 @@ function select(i) {
     const c = game?.hands[game.turn]?.[selected];
     const elem = c ? ELEMENTS[c.element] : null;
     const label = c ? `${c.name} (${elem ? `${elem.icon} ${elem.name}` : `Niv.${c.level}`})` : 'Carte sélectionnée';
-    setMessage(`${label} — touchez ou glissez vers une case libre.`);
+    setMessage(`${label} — choisissez une case libre.`);
   }
   render();
 }
@@ -1938,6 +1989,9 @@ document.addEventListener('click', (e) => {
     case 'toggle-music':
       sound.toggleMusic();
       return updateAudioButtons();
+    case 'toggle-hints':
+      sound.playUiClick();
+      return toggleHints();
   }
 });
 
